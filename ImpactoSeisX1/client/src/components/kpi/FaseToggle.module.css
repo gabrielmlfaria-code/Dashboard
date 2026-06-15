@@ -1,0 +1,28 @@
+.grupo {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+.btn,
+.ativo {
+  padding: 0.4rem 0.85rem;
+  border: none;
+  background: transparent;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  transition: background 0.15s, color 0.15s;
+}
+
+.ativo {
+  background: var(--color-blue);
+  color: #fff;
+}
+
+.btn:hover:not(.ativo) {
+  color: var(--color-text);
+  background: rgba(59, 130, 246, 0.1);
+}

@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mock — Dashboard Absenteísmo (layout sugerido)</title>
+    <style>
+      :root {
+        --bg: #f4f6f9;
+        --surface: #ffffff;
+        --surface2: #f8fafc;
+        --border: #e2e8f0;
+        --text: #0f172a;
+        --muted: #64748b;
+        --accent: #4f46e5;
+        --green: #16a34a;
+        --red: #dc2626;
+        --orange: #ea580c;
+        --purple: #7c3aed;
+        --radius: 12px;
+        --font: "Segoe UI", system-ui, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: var(--font);
+        font-size: 13px;
+        color: var(--text);
+        background: var(--bg);
+        line-height: 1.4;
+      }
+      .banner {
+        background: #eef2ff;
+        border-bottom: 1px solid #c7d2fe;
+        padding: 10px 16px;
+        font-size: 12px;
+        color: #3730a3;
+      }
+      .topbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        padding: 10px 16px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+      }
+      .chip {
+        padding: 6px 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface2);
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .btn {
+        padding: 6px 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: default;
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        gap: 14px;
+        padding: 14px 16px 24px;
+        align-items: start;
+      }
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 14px;
+      }
+      .panel h2 {
+        margin: 0 0 12px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .panel-head h2 {
+        margin: 0;
+      }
+      .sidebar-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .donut-row {
+        display: flex;
+        gap: 14px;
+        align-items: center;
+      }
+      .donut {
+        width: 88px;
+        height: 88px;
+        border-radius: 50%;
+        border: 7px solid var(--border);
+        border-top-color: var(--accent);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        flex-shrink: 0;
+      }
+      .donut small {
+        font-size: 10px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+      .stat-cell {
+        padding: 8px;
+        background: var(--surface2);
+        border-radius: 8px;
+        border: 1px solid var(--border);
+      }
+      .stat-cell span {
+        display: block;
+        font-size: 10px;
+        color: var(--muted);
+      }
+      .stat-cell strong {
+        font-size: 15px;
+      }
+      .main {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-width: 0;
+      }
+      .tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+      }
+      .pill {
+        padding: 5px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        background: var(--surface);
+      }
+      .pill.active {
+        background: #eef2ff;
+        border-color: #a5b4fc;
+        color: var(--accent);
+      }
+      .period {
+        margin-left: auto;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .kpis {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+      }
+      .kpi {
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface2);
+      }
+      .kpi label {
+        font-size: 11px;
+        color: var(--muted);
+        display: block;
+        margin-bottom: 4px;
+      }
+      .kpi .value {
+        font-size: 26px;
+        font-weight: 800;
+        line-height: 1.1;
+      }
+      .kpi .sub {
+        margin-top: 6px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .badge-red {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 6px;
+        background: #fee2e2;
+        color: var(--red);
+        font-size: 10px;
+        font-weight: 700;
+      }
+      .bar {
+        height: 6px;
+        background: var(--border);
+        border-radius: 3px;
+        margin-top: 8px;
+        overflow: hidden;
+      }
+      .bar > i {
+        display: block;
+        height: 100%;
+        width: 100%;
+        background: var(--red);
+      }
+      .triple {
+        display: grid;
+        grid-template-columns: 1.15fr 1fr 0.95fr;
+        gap: 10px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+      }
+      th,
+      td {
+        padding: 6px 8px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+      }
+      th {
+        background: var(--surface2);
+        font-weight: 700;
+        color: var(--muted);
+        position: sticky;
+        top: 0;
+      }
+      tr:nth-child(even) td {
+        background: #fafbfc;
+      }
+      td.num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .scroll {
+        max-height: 220px;
+        overflow: auto;
+      }
+      .actions ol {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--text);
+      }
+      .actions li {
+        margin-bottom: 8px;
+        font-size: 11px;
+      }
+      .double {
+        display: grid;
+        grid-template-columns: 1fr 1.35fr;
+        gap: 10px;
+      }
+      .chart-bars {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .chart-row {
+        display: grid;
+        grid-template-columns: 52px 1fr 40px;
+        gap: 8px;
+        align-items: center;
+        font-size: 11px;
+      }
+      .chart-row .track {
+        height: 10px;
+        background: var(--border);
+        border-radius: 4px;
+        overflow: hidden;
+      }
+      .chart-row .fill {
+        height: 100%;
+        background: #fca5a5;
+        border-radius: 4px;
+      }
+      .note {
+        margin-top: 12px;
+        padding: 12px 14px;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        border-radius: 10px;
+        font-size: 12px;
+        color: #1e40af;
+      }
+      .note strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+      @media (max-width: 1100px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        .kpis {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .triple,
+        .double {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="banner">
+      <strong>Mock HTML</strong> — layout sugerido com todas as informações. Abra este arquivo no
+      navegador antes de implementar no React. Dados ilustrativos (18/05/2026).
+    </div>
+
+    <div class="topbar">
+      <span class="chip">Todas as filiais</span>
+      <span class="chip">Todos os departamentos</span>
+      <span class="chip">Colaborador…</span>
+      <span style="flex: 1"></span>
+      <button type="button" class="btn">Escuro</button>
+      <button type="button" class="btn">Força Prevista</button>
+      <button type="button" class="btn">Calculadora</button>
+      <button type="button" class="btn">Configurações</button>
+    </div>
+
+    <div class="layout">
+      <aside class="sidebar-stack">
+        <section class="panel">
+          <h2>Posição do dia agora</h2>
+          <div class="donut-row">
+            <div class="donut">111/453<small>25% presente</small></div>
+            <div>
+              <strong style="font-size: 15px">18/05/2026</strong><br />
+              <span style="color: var(--muted); font-size: 11px">Atualização em tempo real</span>
+            </div>
+          </div>
+          <div class="stat-grid" style="margin-top: 12px">
+            <div class="stat-cell"><span>Presentes</span><strong style="color: var(--green)">111</strong></div>
+            <div class="stat-cell"><span>Faltas</span><strong style="color: var(--red)">37</strong></div>
+            <div class="stat-cell"><span>Atrasos</span><strong style="color: var(--orange)">10</strong></div>
+            <div class="stat-cell"><span>Já saiu</span><strong>26</strong></div>
+            <div class="stat-cell"><span>Entrada prev.</span><strong style="color: var(--purple)">290</strong></div>
+            <div class="stat-cell"><span>Sem controle</span><strong>16</strong></div>
+          </div>
+        </section>
+        <section class="panel">
+          <h2>Quadro</h2>
+          <table>
+            <tr><th>Indicador</th><th class="num">Qtd.</th></tr>
+            <tr><td>Força atual</td><td class="num">453</td></tr>
+            <tr><td>Força prevista</td><td class="num">453</td></tr>
+            <tr><td>Vagas</td><td class="num">0</td></tr>
+          </table>
+        </section>
+        <section class="panel">
+          <h2>Planejadas</h2>
+          <table>
+            <tr><th>Tipo</th><th class="num">Qtd.</th></tr>
+            <tr><td>Total planejadas</td><td class="num">69</td></tr>
+            <tr><td>Folgas</td><td class="num">3</td></tr>
+            <tr><td>Férias</td><td class="num">46</td></tr>
+            <tr><td>Afastados</td><td class="num">20</td></tr>
+          </table>
+        </section>
+      </aside>
+
+      <main class="main">
+        <div class="tabs">
+          <span class="pill active">ABSENTEÍSMO</span>
+          <span class="pill">7d</span>
+          <span class="pill active">15d</span>
+          <span class="pill">30d</span>
+          <span class="pill">Períodos</span>
+          <span class="pill">Radar</span>
+          <span class="pill">Gráfico</span>
+          <span class="pill">Tabela</span>
+          <span class="period">Período: 01/05/26 – 18/05/26</span>
+        </div>
+
+        <div class="kpis">
+          <div class="kpi">
+            <label>Absenteísmo</label>
+            <div class="value" style="color: var(--red)">3,8%</div>
+            <div class="sub"><span class="badge-red">+2,0% vs. anterior</span> · 63 ocorrências</div>
+          </div>
+          <div class="kpi">
+            <label>Horas perdidas</label>
+            <div class="value">2648:15</div>
+            <div class="sub"><span class="badge-red">+1,1% vs. anterior</span> · 20,5% da carga</div>
+          </div>
+          <div class="kpi">
+            <label>Risco preventivo NR-1 / GRO</label>
+            <div class="value" style="font-size: 18px"><span class="badge-red">Alto</span></div>
+            <div class="sub">Score 100 / 100</div>
+            <div class="bar"><i></i></div>
+          </div>
+          <div class="kpi">
+            <label>Departamento crítico</label>
+            <div class="value" style="font-size: 14px">MIDA — Manutenção Industrial</div>
+            <div class="sub"><button type="button" class="btn" style="margin-top: 6px">Investigar</button></div>
+          </div>
+        </div>
+
+        <div class="triple">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Departamentos em atenção</h2>
+              <button type="button" class="btn">Ver todos</button>
+            </div>
+            <div class="scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Departamento</th>
+                    <th class="num">Oc.</th>
+                    <th class="num">Hrs. perd.</th>
+                    <th class="num">Var.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>MIDA — Manutenção Industrial</td>
+                    <td class="num">8</td>
+                    <td class="num">275:15</td>
+                    <td class="num">+1,2%</td>
+                  </tr>
+                  <tr>
+                    <td>AJDA — Ajudante de Despacho</td>
+                    <td class="num">4</td>
+                    <td class="num">346:00</td>
+                    <td class="num">+0,8%</td>
+                  </tr>
+                  <tr>
+                    <td>MTRA — Motorista</td>
+                    <td class="num">4</td>
+                    <td class="num">128:00</td>
+                    <td class="num">−0,3%</td>
+                  </tr>
+                  <tr>
+                    <td>AJLA — Ajudante de Lavanderia</td>
+                    <td class="num">4</td>
+                    <td class="num">166:00</td>
+                    <td class="num">+2,1%</td>
+                  </tr>
+                  <tr>
+                    <td>GRNA — Gerência</td>
+                    <td class="num">3</td>
+                    <td class="num">98:30</td>
+                    <td class="num">+0,5%</td>
+                  </tr>
+                  <tr>
+                    <td>LAVA — Lavanderia</td>
+                    <td class="num">2</td>
+                    <td class="num">72:10</td>
+                    <td class="num">−0,1%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>Dias críticos</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Volume</th>
+                  <th>Depto.</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>Sex 15/05/26</td><td>8 ocorrências</td><td>MIDA</td></tr>
+                <tr><td>Qui 14/05/26</td><td>6 ocorrências</td><td>AJDA</td></tr>
+                <tr><td>Qua 13/05/26</td><td>5 ocorrências</td><td>MTRA</td></tr>
+                <tr><td>Ter 12/05/26</td><td>4 ocorrências</td><td>AJLA</td></tr>
+                <tr><td>Seg 11/05/26</td><td>3 ocorrências</td><td>GRNA</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="panel actions">
+            <h2>Ações sugeridas ao RH</h2>
+            <ol>
+              <li>Ação preventiva em MIDA: 8 ocorrências e 275:15 hrs no período.</li>
+              <li>Sobrecarga em AJDA: 346:00 hrs; revisar escala.</li>
+              <li>Pico em 15/05/26 (8 oc.): validar CID recorrentes.</li>
+              <li>Rotatividade estável; acompanhar admitidos vs. desligados.</li>
+            </ol>
+            <button type="button" class="btn btn-primary" style="margin-top: 10px">
+              Ver tabela detalhada
+            </button>
+          </section>
+        </div>
+
+        <div class="double">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Ausências por departamento</h2>
+              <div>
+                <span class="pill active">Ausências</span>
+                <span class="pill">Presentes</span>
+                <button type="button" class="btn">Ver todos</button>
+              </div>
+            </div>
+            <div class="chart-bars">
+              <div class="chart-row">
+                <span>AJDA</span>
+                <div class="track"><div class="fill" style="width: 100%"></div></div>
+                <span class="num">346</span>
+              </div>
+              <div class="chart-row">
+                <span>MIDA</span>
+                <div class="track"><div class="fill" style="width: 80%"></div></div>
+                <span class="num">275</span>
+              </div>
+              <div class="chart-row">
+                <span>AJLA</span>
+                <div class="track"><div class="fill" style="width: 48%"></div></div>
+                <span class="num">166</span>
+              </div>
+              <div class="chart-row">
+                <span>MTRA</span>
+                <div class="track"><div class="fill" style="width: 37%"></div></div>
+                <span class="num">128</span>
+              </div>
+              <div class="chart-row">
+                <span>GRNA</span>
+                <div class="track"><div class="fill" style="width: 28%"></div></div>
+                <span class="num">98</span>
+              </div>
+              <div class="chart-row">
+                <span>LAVA</span>
+                <div class="track"><div class="fill" style="width: 21%"></div></div>
+                <span class="num">72</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Turnover</h2>
+              <div>
+                <span class="chip">jan/26</span>
+                <span class="chip">dez/25</span>
+                <button type="button" class="btn">Exportar</button>
+              </div>
+            </div>
+            <div class="scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Indicador</th>
+                    <th class="num">Jan/26</th>
+                    <th class="num">Fev/26</th>
+                    <th class="num">Mar/26</th>
+                    <th class="num">Abr/26</th>
+                    <th class="num">Mai/26</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Desligados</td>
+                    <td class="num">12</td>
+                    <td class="num">9</td>
+                    <td class="num">11</td>
+                    <td class="num">8</td>
+                    <td class="num">6</td>
+                  </tr>
+                  <tr>
+                    <td>Admitidos</td>
+                    <td class="num">10</td>
+                    <td class="num">14</td>
+                    <td class="num">9</td>
+                    <td class="num">12</td>
+                    <td class="num">11</td>
+                  </tr>
+                  <tr>
+                    <td>Horistas</td>
+                    <td class="num">4</td>
+                    <td class="num">3</td>
+                    <td class="num">5</td>
+                    <td class="num">2</td>
+                    <td class="num">4</td>
+                  </tr>
+                  <tr>
+                    <td>Mensalistas</td>
+                    <td class="num">6</td>
+                    <td class="num">4</td>
+                    <td class="num">4</td>
+                    <td class="num">5</td>
+                    <td class="num">3</td>
+                  </tr>
+                  <tr>
+                    <td>Estagiários</td>
+                    <td class="num">2</td>
+                    <td class="num">2</td>
+                    <td class="num">2</td>
+                    <td class="num">1</td>
+                    <td class="num">2</td>
+                  </tr>
+                  <tr style="background: #fffbeb">
+                    <td>% Rotatividade</td>
+                    <td class="num">4,2%</td>
+                    <td class="num">3,8%</td>
+                    <td class="num">4,5%</td>
+                    <td class="num">3,1%</td>
+                    <td class="num" style="color: var(--orange); font-weight: 700">2,9%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <div class="note">
+          <strong>O que mudou (sem remover dados)</strong>
+          KPIs na mesma linha; listas em 3 colunas; gráfico e turnover lado a lado; painéis com título
+          e tabela zebrada. Próximo passo: levar este layout para <code>posicao-bento.css</code> no
+          app React.
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

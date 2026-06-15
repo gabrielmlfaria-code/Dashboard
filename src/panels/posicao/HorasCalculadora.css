@@ -1,0 +1,720 @@
+/* HorasCalculadora — premium hours calculator with light/dark theme */
+
+/* ── Dark theme (default) ── */
+.hcalc-overlay {
+  --hc-overlay-bg: rgba(0, 0, 0, 0.7);
+  --hc-modal-bg: oklch(0.18 0.018 264);
+  --hc-modal-bg2: oklch(0.21 0.018 264);
+  --hc-modal-bg3: oklch(0.22 0.018 264);
+  --hc-modal-bg4: oklch(0.25 0.018 264);
+  --hc-border: rgba(255, 255, 255, 0.09);
+  --hc-border-sub: rgba(255, 255, 255, 0.07);
+  --hc-border-heavy: rgba(255, 255, 255, 0.1);
+  --hc-shadow: 0 1px 0 rgba(255, 255, 255, 0.07) inset, 0 28px 70px rgba(0, 0, 0, 0.65);
+  --hc-text: oklch(0.96 0.004 264);
+  --hc-text-muted: oklch(0.78 0.02 264);
+  --hc-text-dim: oklch(0.65 0.02 264);
+  --hc-text-faint: oklch(0.6 0.02 264);
+  --hc-inp-bg: oklch(0.25 0.018 264);
+  --hc-inp-border: rgba(255, 255, 255, 0.1);
+  --hc-inp-bg-f: oklch(0.27 0.018 264);
+  --hc-sel-bg: rgba(255, 255, 255, 0.06);
+  --hc-close-bg: rgba(255, 255, 255, 0.06);
+  --hc-close-color: oklch(0.7 0.02 264);
+  --hc-icon-btn-bg: rgba(255, 255, 255, 0.06);
+  --hc-icon-btn-bdr: rgba(255, 255, 255, 0.12);
+  --hc-icon-btn-color: oklch(0.78 0.02 264);
+  --hc-icon-btn-bg-h: rgba(255, 255, 255, 0.11);
+  --hc-icon-btn-bdh: rgba(255, 255, 255, 0.2);
+  --hc-tab-bg: rgba(255, 255, 255, 0.05);
+  --hc-tab-bdr: rgba(255, 255, 255, 0.1);
+  --hc-tab-color: oklch(0.7 0.02 264);
+  --hc-tab-bg-a: rgba(99, 102, 241, 0.18);
+  --hc-tab-bdr-a: rgba(99, 102, 241, 0.4);
+  --hc-tab-color-a: #a5b4fc;
+  --hc-card-bg: oklch(0.22 0.018 264);
+  --hc-card-bdr: rgba(255, 255, 255, 0.08);
+  --hc-card-lbl: oklch(0.6 0.02 264);
+  --hc-card-hint: oklch(0.58 0.02 264);
+  --hc-th-bg: oklch(0.21 0.018 264);
+  --hc-th-bdr: rgba(255, 255, 255, 0.1);
+  --hc-th-color: oklch(0.62 0.02 264);
+  --hc-row-hover: rgba(255, 255, 255, 0.03);
+  --hc-row-extra-bg: rgba(99, 102, 241, 0.04);
+  --hc-row-extra-bgh: rgba(99, 102, 241, 0.08);
+  --hc-row-falta-bg: rgba(239, 68, 68, 0.04);
+  --hc-row-falta-bgh: rgba(239, 68, 68, 0.08);
+  --hc-foot-bg: oklch(0.22 0.018 264);
+  --hc-foot-bdr: rgba(255, 255, 255, 0.1);
+  --hc-foot-lbl: oklch(0.6 0.02 264);
+  --hc-del-color: oklch(0.55 0.02 264);
+  --hc-resize-color: rgba(255, 255, 255, 0.15);
+  --hc-resize-color-h: rgba(129, 140, 248, 0.55);
+  --hc-op-bg: oklch(0.21 0.018 264);
+  --hc-op-bdr: rgba(255, 255, 255, 0.07);
+  --hc-op-title: oklch(0.72 0.02 264);
+  --hc-op-res-bg: oklch(0.25 0.018 264);
+  --hc-op-res-bdr: rgba(255, 255, 255, 0.1);
+}
+
+/* ── Light theme ── */
+.hcalc-overlay[data-theme="light"] {
+  --hc-overlay-bg: rgba(0, 0, 0, 0.35);
+  --hc-modal-bg: #ffffff;
+  --hc-modal-bg2: #f5f5f7;
+  --hc-modal-bg3: #f0f0f3;
+  --hc-modal-bg4: #f9fafb;
+  --hc-border: rgba(0, 0, 0, 0.09);
+  --hc-border-sub: rgba(0, 0, 0, 0.07);
+  --hc-border-heavy: rgba(0, 0, 0, 0.12);
+  --hc-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 20px 50px rgba(0, 0, 0, 0.18);
+  --hc-text: #111827;
+  --hc-text-muted: #374151;
+  --hc-text-dim: #6b7280;
+  --hc-text-faint: #9ca3af;
+  --hc-inp-bg: #f9fafb;
+  --hc-inp-border: rgba(0, 0, 0, 0.12);
+  --hc-inp-bg-f: #ffffff;
+  --hc-sel-bg: #f9fafb;
+  --hc-close-bg: rgba(0, 0, 0, 0.05);
+  --hc-close-color: #6b7280;
+  --hc-icon-btn-bg: rgba(0, 0, 0, 0.05);
+  --hc-icon-btn-bdr: rgba(0, 0, 0, 0.12);
+  --hc-icon-btn-color: #374151;
+  --hc-icon-btn-bg-h: rgba(0, 0, 0, 0.09);
+  --hc-icon-btn-bdh: rgba(0, 0, 0, 0.2);
+  --hc-tab-bg: rgba(0, 0, 0, 0.04);
+  --hc-tab-bdr: rgba(0, 0, 0, 0.1);
+  --hc-tab-color: #6b7280;
+  --hc-tab-bg-a: rgba(99, 102, 241, 0.12);
+  --hc-tab-bdr-a: rgba(99, 102, 241, 0.35);
+  --hc-tab-color-a: #4f46e5;
+  --hc-card-bg: #f8f8fb;
+  --hc-card-bdr: rgba(0, 0, 0, 0.08);
+  --hc-card-lbl: #6b7280;
+  --hc-card-hint: #9ca3af;
+  --hc-th-bg: #f0f0f4;
+  --hc-th-bdr: rgba(0, 0, 0, 0.1);
+  --hc-th-color: #6b7280;
+  --hc-row-hover: rgba(0, 0, 0, 0.03);
+  --hc-row-extra-bg: rgba(99, 102, 241, 0.04);
+  --hc-row-extra-bgh: rgba(99, 102, 241, 0.08);
+  --hc-row-falta-bg: rgba(239, 68, 68, 0.04);
+  --hc-row-falta-bgh: rgba(239, 68, 68, 0.07);
+  --hc-foot-bg: #f5f5f7;
+  --hc-foot-bdr: rgba(0, 0, 0, 0.1);
+  --hc-foot-lbl: #9ca3af;
+  --hc-del-color: #9ca3af;
+  --hc-resize-color: rgba(0, 0, 0, 0.18);
+  --hc-resize-color-h: rgba(99, 102, 241, 0.55);
+  --hc-op-bg: #f5f5f7;
+  --hc-op-bdr: rgba(0, 0, 0, 0.07);
+  --hc-op-title: #374151;
+  --hc-op-res-bg: #ffffff;
+  --hc-op-res-bdr: rgba(0, 0, 0, 0.12);
+}
+
+/* ── Overlay ── */
+.hcalc-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9200;
+  background: var(--hc-overlay-bg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* ── Modal ── */
+.hcalc-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  background: var(--hc-modal-bg);
+  border: 1px solid var(--hc-border);
+  border-radius: 18px;
+  box-shadow: var(--hc-shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--hc-text);
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+/* ── Header ── */
+.hcalc-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--hc-border-sub);
+  flex-shrink: 0;
+  cursor: grab;
+}
+.hcalc-header:active {
+  cursor: grabbing;
+}
+.hcalc-header-l {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+.hcalc-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+.hcalc-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--hc-text);
+}
+.hcalc-sub {
+  font-size: 11px;
+  color: var(--hc-text-dim);
+  margin-top: 2px;
+}
+
+.hcalc-icon-btn {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--hc-icon-btn-bdr);
+  background: var(--hc-icon-btn-bg);
+  color: var(--hc-icon-btn-color);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.hcalc-icon-btn:hover {
+  background: var(--hc-icon-btn-bg-h);
+  border-color: var(--hc-icon-btn-bdh);
+}
+
+.hcalc-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: none;
+  cursor: pointer;
+  background: var(--hc-close-bg);
+  color: var(--hc-close-color);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.hcalc-close:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+/* ── Tab buttons ── */
+.hcalc-tab-btn {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--hc-tab-bdr);
+  background: var(--hc-tab-bg);
+  color: var(--hc-tab-color);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+.hcalc-tab-btn:hover {
+  background: var(--hc-icon-btn-bg-h);
+}
+.hcalc-tab-btn.active {
+  background: var(--hc-tab-bg-a);
+  border-color: var(--hc-tab-bdr-a);
+  color: var(--hc-tab-color-a);
+}
+
+/* ── Config bar ── */
+.hcalc-config-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: flex-end;
+  padding: 12px 22px;
+  background: var(--hc-modal-bg2);
+  border-bottom: 1px solid var(--hc-border-sub);
+  flex-shrink: 0;
+}
+.hcalc-cfg-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hcalc-cfg-lbl {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--hc-text-dim);
+}
+.hcalc-time-inp {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.hcalc-sep {
+  font-size: 12px;
+  color: var(--hc-text-dim);
+}
+
+.hcalc-num-inp {
+  width: 44px;
+  background: var(--hc-inp-bg);
+  border: 1px solid var(--hc-inp-border);
+  border-radius: 7px;
+  padding: 5px 6px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--hc-text);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.hcalc-num-inp:focus {
+  border-color: rgba(129, 140, 248, 0.5);
+}
+
+.hcalc-sal-inp {
+  width: 110px;
+  background: var(--hc-inp-bg);
+  border: 1px solid var(--hc-inp-border);
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--hc-text);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.hcalc-sal-inp:focus {
+  border-color: rgba(129, 140, 248, 0.5);
+}
+
+/* ── Summary cards ── */
+.hcalc-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--hc-border-sub);
+  flex-shrink: 0;
+}
+
+.hcalc-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--hc-card-bdr);
+  background: var(--hc-card-bg);
+  min-width: 120px;
+  flex: 1;
+  transition: transform 0.15s;
+}
+.hcalc-card:hover {
+  transform: translateY(-1px);
+}
+.hcalc-card-ico {
+  font-size: 20px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.hcalc-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.hcalc-card-lbl {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--hc-card-lbl);
+}
+.hcalc-card-val {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.hcalc-card-hint {
+  font-size: 10px;
+  color: var(--hc-card-hint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hcalc-card-plan {
+  border-color: rgba(129, 140, 248, 0.2);
+}
+.hcalc-card-plan .hcalc-card-val {
+  color: #818cf8;
+}
+.hcalc-card-worked .hcalc-card-val {
+  color: var(--hc-text);
+}
+.hcalc-card-normal .hcalc-card-val {
+  color: #22c55e;
+}
+.hcalc-card-he50 {
+  border-color: rgba(99, 102, 241, 0.25);
+}
+.hcalc-card-he50 .hcalc-card-val {
+  color: #818cf8;
+}
+.hcalc-card-he100 {
+  border-color: rgba(168, 85, 247, 0.25);
+}
+.hcalc-card-he100 .hcalc-card-val {
+  color: #c084fc;
+}
+.hcalc-card-falta {
+  border-color: rgba(239, 68, 68, 0.25);
+}
+.hcalc-card-falta .hcalc-card-val {
+  color: #ef4444;
+}
+.hcalc-card-banco {
+  border-color: var(--hc-card-bdr);
+}
+.hcalc-card-banco .hcalc-card-val {
+  color: var(--hc-text-muted);
+}
+.hcalc-card-banco.positive {
+  border-color: rgba(34, 197, 94, 0.3);
+}
+.hcalc-card-banco.positive .hcalc-card-val {
+  color: #22c55e;
+}
+.hcalc-card-banco.negative {
+  border-color: rgba(239, 68, 68, 0.3);
+}
+.hcalc-card-banco.negative .hcalc-card-val {
+  color: #ef4444;
+}
+
+/* ── Table ── */
+.hcalc-table-wrap {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  padding: 0 22px;
+}
+.hcalc-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12.5px;
+}
+.hcalc-th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--hc-th-bg);
+  border-bottom: 1px solid var(--hc-th-bdr);
+  padding: 8px 8px;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--hc-th-color);
+  text-align: left;
+}
+.hcalc-th-r {
+  text-align: right;
+}
+.hcalc-th-time {
+  min-width: 90px;
+}
+.hcalc-th-he50 {
+  color: #818cf8;
+}
+.hcalc-th-he100 {
+  color: #c084fc;
+}
+.hcalc-th-falta {
+  color: #ef4444;
+}
+
+.hcalc-row {
+  border-bottom: 1px solid var(--hc-border-sub);
+  transition: background 0.1s;
+}
+.hcalc-row:hover {
+  background: var(--hc-row-hover);
+}
+.hcalc-row.row-ok {
+}
+.hcalc-row.row-extra {
+  background: var(--hc-row-extra-bg);
+}
+.hcalc-row.row-extra:hover {
+  background: var(--hc-row-extra-bgh);
+}
+.hcalc-row.row-falta {
+  background: var(--hc-row-falta-bg);
+}
+.hcalc-row.row-falta:hover {
+  background: var(--hc-row-falta-bgh);
+}
+
+.hcalc-td {
+  padding: 6px 8px;
+  vertical-align: middle;
+}
+.hcalc-td-r {
+  padding: 6px 8px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.hcalc-inp {
+  background: var(--hc-inp-bg);
+  border: 1px solid var(--hc-inp-border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--hc-text);
+  outline: none;
+  width: 100%;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.hcalc-inp:focus {
+  border-color: rgba(129, 140, 248, 0.45);
+  background: var(--hc-inp-bg-f);
+}
+.hcalc-inp-date {
+  min-width: 120px;
+}
+.hcalc-inp-time {
+  min-width: 82px;
+}
+
+.hcalc-sel {
+  background: var(--hc-sel-bg);
+  border: 1px solid var(--hc-inp-border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--hc-text);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.hcalc-sel:focus {
+  border-color: rgba(129, 140, 248, 0.45);
+}
+
+.hcalc-del {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: var(--hc-del-color);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.hcalc-del:hover {
+  background: rgba(239, 68, 68, 0.18);
+  color: #ef4444;
+}
+
+.c-normal {
+  color: #22c55e;
+}
+.c-he50 {
+  color: #818cf8;
+}
+.c-he100 {
+  color: #c084fc;
+}
+.c-falta {
+  color: #ef4444;
+}
+
+/* Totals foot */
+.hcalc-foot-row {
+  background: var(--hc-foot-bg);
+}
+.hcalc-foot-row td {
+  padding: 7px 8px;
+  font-weight: 700;
+  border-top: 2px solid var(--hc-foot-bdr);
+  color: var(--hc-text);
+}
+.hcalc-foot-lbl {
+  font-size: 11px;
+  color: var(--hc-foot-lbl);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ── Footer ── */
+.hcalc-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border-top: 1px solid var(--hc-border-sub);
+  flex-shrink: 0;
+}
+
+/* ── Resize handle ── */
+.hcalc-resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  cursor: se-resize;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 3px;
+  color: var(--hc-resize-color);
+  transition: color 0.15s;
+}
+.hcalc-resize-handle::after {
+  content: "◢";
+  font-size: 12px;
+}
+.hcalc-resize-handle:hover {
+  color: var(--hc-resize-color-h);
+}
+
+/* ── Hours Operations panel ── */
+.hcalc-op-panel {
+  padding: 28px 28px 20px;
+  background: var(--hc-op-bg);
+  border-top: 1px solid var(--hc-op-bdr);
+  min-height: 200px;
+}
+.hcalc-op-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--hc-op-title);
+  margin-bottom: 20px;
+}
+.hcalc-op-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-end;
+}
+.hcalc-op-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.hcalc-op-lbl {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--hc-text-dim);
+}
+.hcalc-op-inp {
+  background: var(--hc-inp-bg);
+  border: 1px solid var(--hc-inp-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--hc-text);
+  outline: none;
+  min-width: 110px;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.hcalc-op-inp:focus {
+  border-color: rgba(129, 140, 248, 0.5);
+  background: var(--hc-inp-bg-f);
+}
+.hcalc-op-inp-fac {
+  min-width: 70px;
+}
+
+.hcalc-op-sel {
+  background: var(--hc-sel-bg);
+  border: 1px solid var(--hc-inp-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--hc-text);
+  outline: none;
+  cursor: pointer;
+  min-width: 140px;
+  transition: border-color 0.15s;
+}
+.hcalc-op-sel:focus {
+  border-color: rgba(129, 140, 248, 0.45);
+}
+
+.hcalc-op-result-wrap {
+  min-width: 120px;
+}
+.hcalc-op-result {
+  background: var(--hc-op-res-bg);
+  border: 1px solid var(--hc-op-res-bdr);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: var(--hc-text-dim);
+  min-width: 120px;
+  transition: color 0.15s;
+}
+.hcalc-op-result.pos {
+  color: #22c55e;
+  border-color: rgba(34, 197, 94, 0.25);
+}
+.hcalc-op-result.neg {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.25);
+}
+.hcalc-op-result.empty {
+  color: var(--hc-text-faint);
+}
+
+.hcalc-op-long-wrap {
+  justify-content: flex-end;
+}
+.hcalc-op-long {
+  font-size: 12px;
+  color: var(--hc-text-dim);
+  padding: 4px 0;
+}

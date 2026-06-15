@@ -1,0 +1,75 @@
+.wrapper {
+  margin-bottom: 1.25rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+
+.card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  transition: border-color 0.15s;
+}
+
+.card:hover {
+  border-color: var(--color-blue);
+}
+
+.cardDestaque {
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.cardLargo {
+  grid-column: span 2;
+}
+
+@media (max-width: 520px) {
+  .cardLargo {
+    grid-column: span 1;
+  }
+}
+
+.iconeWrap {
+  margin-bottom: 0.5rem;
+}
+
+.icone {
+  color: var(--color-blue);
+}
+
+.card[data-accent='red'] .icone {
+  color: var(--color-red);
+}
+
+.card[data-accent='green'] .icone {
+  color: var(--color-green);
+}
+
+.card[data-accent='yellow'] .icone {
+  color: var(--color-yellow);
+}
+
+.card[data-accent='purple'] .icone {
+  color: var(--color-purple);
+}
+
+.rotulo {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.valor {
+  margin: 0.25rem 0 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.02em;
+}

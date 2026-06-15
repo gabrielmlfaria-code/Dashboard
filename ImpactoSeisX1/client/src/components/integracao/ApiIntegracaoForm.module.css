@@ -1,0 +1,75 @@
+.tituloLinha {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tituloLinha svg {
+  color: var(--color-purple);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.linha {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.input {
+  flex: 1;
+  min-width: 200px;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-blue);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+
+.btn {
+  padding: 0.55rem 1rem;
+  background: var(--color-blue);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  transition: opacity 0.15s;
+}
+
+.btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.hint code {
+  background: var(--color-bg);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+}

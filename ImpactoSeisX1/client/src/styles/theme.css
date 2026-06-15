@@ -1,0 +1,15 @@
+:root {
+  --color-bg: #0f172a;
+  --color-panel: #1e293b;
+  --color-border: #334155;
+  --color-text: #f1f5f9;
+  --color-text-muted: #94a3b8;
+  --color-blue: #3b82f6;
+  --color-yellow: #f59e0b;
+  --color-red: #ef4444;
+  --color-green: #22c55e;
+  --color-purple: #a855f7;
+  --radius: 12px;
+  --font-family: 'Inter', sans-serif;
+  --shadow-panel: 0 4px 24px rgba(0, 0, 0, 0.25);
+}

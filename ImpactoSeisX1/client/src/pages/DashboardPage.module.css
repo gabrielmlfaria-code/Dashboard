@@ -1,0 +1,17 @@
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.vazio {
+  text-align: center;
+  color: var(--color-text-muted);
+  padding: 2.5rem 1rem;
+  margin: 0;
+  background: var(--color-panel);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  font-size: 0.95rem;
+}

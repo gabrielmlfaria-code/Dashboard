@@ -1,0 +1,24 @@
+## Node (client)
+client/node_modules/
+client/dist/
+
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.DotSettings.user
+
+## IDE
+.idea/
+*.swp
+
+## Logs / temp
+logs/
+*.log
+tmp/
+
+## Uploads (planilhas importadas em dev)
+src/ImpactoSeisX1.Api/App_Data/uploads/*
+!src/ImpactoSeisX1.Api/App_Data/uploads/.gitkeep

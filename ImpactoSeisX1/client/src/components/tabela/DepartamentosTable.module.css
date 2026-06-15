@@ -1,0 +1,59 @@
+.wrapper {
+  overflow-x: auto;
+  margin: -0.25rem 0 0;
+}
+
+.tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.tabela th,
+.tabela td {
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tabela th {
+  font-weight: 600;
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+  white-space: nowrap;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.tabela tbody tr:hover {
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.tabela tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.depto {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.afetados {
+  color: var(--color-red);
+  font-weight: 600;
+}
+
+.custo {
+  color: var(--color-yellow);
+  font-weight: 500;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid;
+}

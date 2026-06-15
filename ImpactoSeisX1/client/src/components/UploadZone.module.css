@@ -1,0 +1,166 @@
+.wrapper {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.pageTitle {
+  margin: 0 0 0.35rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-text);
+  text-align: center;
+}
+
+.pageSubtitle {
+  margin: 0 0 1.5rem;
+  font-size: 0.95rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.dropzone {
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  padding: 2.5rem 1.25rem;
+  text-align: center;
+  background: var(--color-panel);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.dropzone:hover:not(.dropzoneDisabled) {
+  border-color: var(--color-blue);
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.dropzoneActive {
+  border-color: var(--color-blue);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.dropzoneReject {
+  border-color: var(--color-red);
+}
+
+.dropzoneDisabled {
+  opacity: 0.55;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+.dropHighlight {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.dropText,
+.dropHint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.fileName {
+  margin: 0.85rem 0 0;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.fileName strong {
+  color: var(--color-text);
+}
+
+.erro {
+  margin: 1rem 0 0;
+  padding: 0.75rem 1rem;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: var(--radius);
+  color: var(--color-red);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  justify-content: center;
+  margin-top: 1.25rem;
+}
+
+.btnSecondary,
+.btnPrimary {
+  padding: 0.55rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: 1px solid var(--color-border);
+  transition: opacity 0.15s;
+}
+
+.btnSecondary {
+  background: var(--color-panel);
+  color: var(--color-text);
+}
+
+.btnSecondary:hover:not(:disabled) {
+  border-color: var(--color-blue);
+  color: var(--color-blue);
+}
+
+.btnPrimary {
+  background: var(--color-blue);
+  color: #fff;
+  border-color: var(--color-blue);
+}
+
+.btnPrimary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btnSecondary:disabled,
+.btnPrimary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.apiForm {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.apiLabel {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin-bottom: 0.4rem;
+}
+
+.apiRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.apiInput {
+  flex: 1;
+  min-width: 200px;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.apiInput:focus {
+  outline: none;
+  border-color: var(--color-blue);
+}
