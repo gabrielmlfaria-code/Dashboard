@@ -1,6 +1,8 @@
 import { createAnomalia } from "../../types/regras.js";
 
 export function regraMarcacaoImpar(ctx) {
+  if (!ctx.isEventoPresencaPrincipal) return null;
+  if (ctx.faltaMarcacaoIdentificada) return null;
   if (ctx.marcacoes.length % 2 !== 1) return null;
   return createAnomalia({
     severity: "critica",

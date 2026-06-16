@@ -634,6 +634,11 @@ export function mergeHistDayRow(prev, patch) {
     merged._employees = mergeHistEmployees(merged._employees, patch._employees);
   }
 
+  if (Array.isArray(patch?._events)) {
+    merged._events = patch._events;
+    merged._eventCount = patch._events.length;
+  }
+
   return syncHistRowAggregates(merged);
 }
 
@@ -868,6 +873,8 @@ const _HEADER_MAP = {
   inicio_afastamento: "inicio",
   data_inicio_afastamento: "inicio",
   data_inicial_afastamento: "inicio",
+  afastamento_datainicio: "inicio",
+  afastamento_data_inicio: "inicio",
   inicio: "inicio",
   inicio_ferias: "inicio",
   dt_inicio: "inicio",
@@ -882,6 +889,9 @@ const _HEADER_MAP = {
   data_termino_1: "termino",
   data_termino_ferias: "termino",
   data_termino_afastamento: "termino",
+  afastamento_final: "termino",
+  afastamento_datafinal: "termino",
+  afastamento_data_final: "termino",
   periodo_fim: "termino",
   periodo_ate: "termino",
   periodo_apuracao_ate: "termino",
@@ -954,10 +964,21 @@ const _HEADER_MAP = {
   cargo_nome: "cargo",
   apontamento_data: "_data",
   apontamento_dt: "_data",
+  apontamento_atividade: "_atividade",
+  codigo_evento: "_evt_cod",
+  cod_evento: "_evt_cod",
   evento_codigo: "_evt_cod",
   evento_cod: "_evt_cod",
+  cod_ocorrencia: "_evt_cod",
+  codigo_ocorrencia: "_evt_cod",
+  evento_atrb: "_evt_desc",
+  evento_atrib: "_evt_desc",
+  evento_atributo: "_evt_desc",
   evento_descricao: "_evt_desc",
   evento_nome: "_evt_desc",
+  situacao_descricao: "_status",
+  situacao_desc: "_status",
+  apontamento_situacao: "_status",
   apontamento_horas: "_horas",
   apontamento_qtd_horas: "_horas",
   marcacao_horario: "horario_dia",
@@ -1034,8 +1055,9 @@ export function _inferCatFromEvent(cod, desc, horasMin) {
   const text = _normText(`${cod} ${desc}`).replace(/\s+/g, " ").trim();
   if (/\b(falta|ausencia)\b/.test(text)) return "falta";
   if (/\b(atrasad|atrasou|atraso|atrasados|tard|chegada)\b/.test(text)) return "atraso";
+  if (/\b(afastamento|afastado|atestado|licenca|auxilio|inss|enfermidade|maternidade|acidente)\b/.test(text))
+    return "afastados";
   if (/\b(ferias)\b/.test(text)) return "ferias";
-  if (/\b(afastamento|atestado|licenca)\b/.test(text)) return "afastados";
   if (/\b(folga|dsr|fds|descanso)\b/.test(text)) return "folga";
   if (/\b(sem.?controle|nao.?controla|desconhec)\b/.test(text)) return "nao_controla";
   if (
@@ -1244,6 +1266,7 @@ export async function importPosicaoXlsxFile(file, opts = {}) {
               justificativa: "",
             },
             cats: new Set(),
+            events: [],
           });
         }
         const emp = dateMap.get(empKey);
@@ -1261,11 +1284,33 @@ export async function importPosicaoXlsxFile(file, opts = {}) {
         const cod = String(o._evt_cod || "").trim();
         const desc = String(o._evt_desc || "").trim();
         const horas = _parseHorasMin(o._horas);
-        const cat = _inferCatFromEvent(cod, desc, horas);
+        const atividade = String(o._atividade || "").trim();
+        const status = String(o._status || "").trim();
+        const cat = _inferCatFromEvent(cod, `${desc} ${atividade} ${status}`, horas);
         if (cat) emp.cats.add(cat);
 
         const marc = _parseMarcacoesString(o._marcacoes);
         if (marc.length && !emp.colab.marcacoes.length) emp.colab.marcacoes = marc;
+
+        emp.events.push({
+          mat,
+          nome,
+          filial: emp.colab.filial,
+          depto: emp.colab.depto_desc,
+          cargo: emp.colab.cargo,
+          genero: emp.colab.genero,
+          data: dateStr,
+          horario: o.horario_dia != null ? String(o.horario_dia).trim() : "",
+          marcacao: o._marcacoes != null ? String(o._marcacoes).trim() : "",
+          cod,
+          evento: desc,
+          atividade,
+          situacaoDesc: status,
+          inicio: o.inicio != null ? _fmtDate(o.inicio) || String(o.inicio) : "",
+          termino: o.termino != null ? _fmtDate(o.termino) || String(o.termino) : "",
+          horas: horas / 60,
+          _cat: cat,
+        });
       }
 
       if (!byDateEmp.size) continue;
@@ -1303,6 +1348,7 @@ export async function importPosicaoXlsxFile(file, opts = {}) {
           afa = 0,
           nc = 0;
         const _employees = [];
+        const _events = [];
         for (const [, emp] of dateMap) {
           const cat = _pickMainCat(emp.cats);
           if (!cat) continue;
@@ -1334,6 +1380,7 @@ export async function importPosicaoXlsxFile(file, opts = {}) {
             hrsExtr: 0,
             hrsPlan: 0,
           });
+          if (Array.isArray(emp.events)) _events.push(...emp.events);
         }
         const just = fold + fer + afa;
         const total = pres + falt + atr + just + nc;
@@ -1348,6 +1395,7 @@ export async function importPosicaoXlsxFile(file, opts = {}) {
           total,
           abs_rate: total > 0 ? +((falt / total) * 100).toFixed(2) : 0,
           _employees: _employees.length > 0 ? _employees : null,
+          _events: _events.length > 0 ? _events : null,
         });
       }
       continue; // esta aba foi processada como eventos; pula para a pr?xima

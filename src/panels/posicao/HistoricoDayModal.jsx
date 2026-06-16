@@ -40,8 +40,10 @@ import {
 } from "./radarHoursUtils.js";
 import {
   DEFAULT_AUDITORIA_PONTO_EVENTOS_IGNORADOS,
+  DEFAULT_AUDITORIA_PONTO_EVENTOS_JORNADA_PRINCIPAL,
   DEFAULT_AUDITORIA_PONTO_EVENTOS_SEM_MARCACAO_OK,
   DEFAULT_AUDITORIA_PONTO_PARAMS,
+  REGRAS_AUDITORIA_PONTO_META,
   analisarAnomaliasPonto,
 } from "./auditoriaPonto/pontoAnomalias.js";
 import {
@@ -52,6 +54,10 @@ import {
   rowPassesHdmColFilter,
 } from "./hdmColFilterUtils.js";
 import { isArt473PreventivaEvent } from "./saudePreventivaArt473.js";
+import {
+  AuditoriaPontoParamsPanel,
+  normalizeAuditoriaParamsConfig,
+} from "./AuditoriaPontoParamsPanel.jsx";
 
 function horarioTimesKey(s) {
   return String(s || "")
@@ -65,6 +71,13 @@ function stripHorarioCode(s) {
     .trim();
 }
 
+function normalizeFaltaMarcacaoToken(s) {
+  return stripHorarioCode(s)
+    .replace(/\bF\s+M\b/gi, "FM")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** Evita repetir horário planejado na linha de marcação quando import veio duplicado. */
 function marcacaoDistinctFromHorario(horario, marcacao) {
   const m = String(marcacao || "").trim();
@@ -75,19 +88,182 @@ function marcacaoDistinctFromHorario(horario, marcacao) {
   return m;
 }
 
+const AUDIT_EXPLAIN_QUICK_QUESTIONS = [
+  { id: "resumo", label: "Resumo" },
+  { id: "limite", label: "Qual limite foi usado?" },
+  { id: "motivo", label: "Por que virou auditoria?" },
+  { id: "marcacoes", label: "Quais marcacoes foram consideradas?" },
+  { id: "corrigir", label: "Como resolver?" },
+];
+
+function auditParamLabel(key) {
+  const labels = {
+    toleranciaMinutos: "Tolerancia geral de desvio",
+    toleranciaDuplicidadeMinutos: "Janela para batida duplicada",
+    janelaPareamentoMaxMinutos: "Janela maxima de pareamento",
+    intervaloIntrajornadaMinutos: "Intervalo intrajornada minimo",
+    jornadaIntrajornadaMinutos: "Jornada que exige intervalo",
+    intervaloInterjornadaMinutos: "Intervalo interjornada minimo",
+    pontoBritanicoDias: "Dias repetidos para ponto britanico",
+    minutosResiduaisMinutos: "Minutos residuais tolerados",
+    limiteHoraExtraDiariaMinutos: "Limite diario de hora extra",
+    intervaloIntrajornadaMaxMinutos: "Intervalo intrajornada maximo",
+    diasConsecutivosLimite: "Limite de dias consecutivos trabalhados",
+    limiteBancoHorasPositivoMinutos: "Limite positivo de banco de horas",
+    limiteBancoHorasNegativoMinutos: "Limite negativo de banco de horas",
+    recorrenciaRiscoLimite: "Ocorrencias para risco recorrente",
+  };
+  return labels[key] || key;
+}
+
+function auditParamValue(key, value) {
+  if (value == null || value === "") return "-";
+  if (/Dias|dias/.test(auditParamLabel(key)) || key === "pontoBritanicoDias" || key === "diasConsecutivosLimite") {
+    return `${value} dia${Number(value) === 1 ? "" : "s"}`;
+  }
+  if (key === "recorrenciaRiscoLimite") return `${value} ocorr.`;
+  const minutes = Number(value);
+  if (Number.isFinite(minutes) && minutes >= 60 && minutes % 60 === 0) {
+    return `${minutes} min (${minutes / 60}:00h)`;
+  }
+  return `${value} min`;
+}
+
+function auditMemoriaLines(memoria) {
+  return (memoria?.anomalias || []).flatMap((item) => item?.memoria || []).filter(Boolean);
+}
+
+function inferAuditQuestionType(value) {
+  const q = String(value || "").toLowerCase();
+  if (!q || q === "resumo") return "resumo";
+  if (q.includes("limite") || q.includes("param") || q.includes("toler") || q.includes("qual")) return "limite";
+  if (q.includes("por que") || q.includes("porque") || q.includes("motivo") || q.includes("crit")) return "motivo";
+  if (q.includes("marca") || q.includes("horario") || q.includes("prev") || q.includes("real")) return "marcacoes";
+  if (q.includes("corr") || q.includes("resolver") || q.includes("acao") || q.includes("tratar")) return "corrigir";
+  return "resumo";
+}
+
+function buildAuditExplanation(memoria, question) {
+  const type = inferAuditQuestionType(question);
+  const first = memoria?.anomalias?.[0] || {};
+  const lines = auditMemoriaLines(memoria);
+  const lineText = lines.join(" | ");
+  const params = memoria?.parametros || {};
+  const paramHits = Object.entries(params).filter(([key]) => {
+    const label = auditParamLabel(key).toLowerCase();
+    const haystack = `${lineText} ${first?.mensagem || ""} ${first?.codigo || ""}`.toLowerCase();
+    return haystack.includes(label.toLowerCase()) || haystack.includes(key.toLowerCase());
+  });
+  const evidenceLines = lines.length ? lines : [first?.detalhe, first?.mensagem].filter(Boolean);
+
+  if (type === "limite") {
+    const relevant = paramHits.length ? paramHits : Object.entries(params).filter(([key]) =>
+      ["jornadaIntrajornadaMinutos", "intervaloIntrajornadaMinutos", "toleranciaMinutos", "limiteHoraExtraDiariaMinutos"].includes(key),
+    );
+    return {
+      title: "Limite usado",
+      answer: relevant.length
+        ? "A auditoria usou estes parametros para comparar a linha:"
+        : "Nao encontrei um parametro explicito na memoria desta regra.",
+      bullets: relevant.map(([key, value]) => `${auditParamLabel(key)}: ${auditParamValue(key, value)}`),
+    };
+  }
+
+  if (type === "motivo") {
+    return {
+      title: "Por que a auditoria apareceu",
+      answer: first?.mensagem || memoria?.resumo || "A regra encontrou uma divergencia nos dados da linha.",
+      bullets: evidenceLines,
+    };
+  }
+
+  if (type === "marcacoes") {
+    return {
+      title: "Horarios considerados",
+      answer: "A comparacao usou o horario planejado, as marcacoes reais e as horas calculadas nesta linha.",
+      bullets: [
+        `Horario planejado: ${memoria?.horarioPlanejado?.join(" ") || "-"}`,
+        `Marcacoes reais: ${memoria?.marcacoes?.join(" ") || "-"}`,
+        `Horas do evento: ${memoria?.horasEvento || "-"}`,
+        `Horas pelas marcacoes: ${memoria?.horasMarcacoes || "-"}`,
+      ],
+    };
+  }
+
+  if (type === "corrigir") {
+    const code = String(first?.codigo || "").toUpperCase();
+    const action =
+      code === "JORNADA_SEM_INTERVALO"
+        ? "Confira se o colaborador deveria ter intervalo registrado. Se sim, corrija/inclua a marcacao de intervalo. Se o cliente aceita intervalo pre-assinalado ou automatico, ajuste a regra para nao exigir acao nesse caso."
+        : "Revise os dados da linha, confira o parametro usado e registre o tratamento em Revisar, Justificar, Corrigir ou Sem acao.";
+    return {
+      title: "Tratamento sugerido",
+      answer: action,
+      bullets: [`Regra: ${first?.codigo || "-"}`, `Status atual: ${memoria?.review?.status || "pendente"}`],
+    };
+  }
+
+  return {
+    title: "Resumo explicado",
+    answer: memoria?.resumo || first?.mensagem || "Esta memoria mostra a regra aplicada, os dados considerados e os parametros usados.",
+    bullets: [
+      `Regra aplicada: ${first?.codigo || "-"}`,
+      `Evento: ${memoria?.evento || "-"}`,
+      `Colaborador: ${memoria?.matricula || ""}${memoria?.colaborador ? ` - ${memoria.colaborador}` : ""}` || "-",
+      `Data: ${memoria?.data || "-"}`,
+    ],
+  };
+}
+
+function auditUsedParamKeys(memoria) {
+  const codes = new Set((memoria?.anomalias || []).map((item) => String(item?.codigo || "").toUpperCase()));
+  const keys = new Set();
+  const text = auditMemoriaLines(memoria).join(" | ").toLowerCase();
+
+  if (codes.has("DIVERGENCIA_HORAS_EVENTO")) keys.add("toleranciaMinutos");
+  if (codes.has("DIVERGENCIA_PLANEJADO")) keys.add("toleranciaMinutos");
+  if (codes.has("SAIDA_APOS_ESCALA_SEM_EXTRA")) keys.add("toleranciaMinutos");
+  if (codes.has("ENTRADA_ANTES_ESCALA_SEM_EXTRA")) keys.add("toleranciaMinutos");
+  if (codes.has("MINUTOS_RESIDUAIS_EXCEDIDOS")) {
+    keys.add("minutosResiduaisMinutos");
+    keys.add("toleranciaMinutos");
+  }
+  if (codes.has("MARCACAO_DUPLICADA")) keys.add("toleranciaDuplicidadeMinutos");
+  if (codes.has("JORNADA_SEM_INTERVALO")) keys.add("jornadaIntrajornadaMinutos");
+  if (codes.has("INTRAJORNADA_INSUFICIENTE")) {
+    keys.add("jornadaIntrajornadaMinutos");
+    keys.add("intervaloIntrajornadaMinutos");
+  }
+  if (codes.has("INTERJORNADA_INSUFICIENTE") || codes.has("TROCA_TURNO_SEM_DESCANSO")) {
+    keys.add("intervaloInterjornadaMinutos");
+  }
+  if (codes.has("HORA_EXTRA_ACIMA_LIMITE_LEGAL")) keys.add("limiteHoraExtraDiariaMinutos");
+  if (codes.has("INTERVALO_ATIPICO_MARCACOES")) keys.add("intervaloIntrajornadaMaxMinutos");
+  if (codes.has("PONTO_BRITANICO")) keys.add("pontoBritanicoDias");
+  if (codes.has("SEQUENCIA_DIAS_SEM_FOLGA")) keys.add("diasConsecutivosLimite");
+  if (codes.has("RISCO_RECORRENTE")) keys.add("recorrenciaRiscoLimite");
+  if (codes.has("BANCO_HORAS_SALDO_EXCEDIDO")) {
+    keys.add("limiteBancoHorasPositivoMinutos");
+    keys.add("limiteBancoHorasNegativoMinutos");
+  }
+
+  Object.keys(memoria?.parametros || {}).forEach((key) => {
+    const label = auditParamLabel(key).toLowerCase();
+    if (text.includes(label) || text.includes(key.toLowerCase())) keys.add(key);
+  });
+
+  return Array.from(keys).filter((key) => Object.prototype.hasOwnProperty.call(memoria?.parametros || {}, key));
+}
+
 const HDM_MAX_RANGE_DAYS = 360;
 const HDM_ROW_HEIGHT = 34;
 const HDM_STACKED_ROW_HEIGHT = 53;
 const HDM_VIRTUAL_MIN_ROWS = 250;
 const HDM_MULTI_GROUP_MAX = 80000;
 const HDM_COLLAB_GROUP_INITIAL_LIMIT = 80;
-const HDM_COLLAB_GROUP_STEP = 80;
-const HDM_COLLAB_DETAIL_INITIAL_LIMIT = 80;
-const HDM_COLLAB_DETAIL_STEP = 80;
 const HDM_AUDIT_COLLAB_GROUP_INITIAL_LIMIT = 24;
-const HDM_AUDIT_COLLAB_GROUP_STEP = 24;
-const HDM_AUDIT_COLLAB_DETAIL_INITIAL_LIMIT = 12;
-const HDM_AUDIT_COLLAB_DETAIL_STEP = 24;
+const HDM_AUDIT_FILTER_SCAN_LIMIT = 1200;
+const HDM_AUDIT_SUMMARY_FULL_LIMIT = 2500;
 
 function addDaysIso(iso, n) {
   const d = new Date(`${iso}T00:00:00`);
@@ -125,16 +301,53 @@ function collectEventIndicesInRange(index, fromKey, toKey) {
 }
 
 const HDM_POS_KEY = "pb_historico_day_modal_pos_v1";
+const HDM_AUDIT_PARAMS_POS_KEY = "pb_historico_audit_params_pos_v1";
 const HDM_STATE_KEY = "pb_historico_day_modal_state_v1";
 const HDM_AUDIT_REVIEW_KEY = "mp_auditoria_ponto_reviews_v1";
+const HDM_COLLAB_COL_WIDTH_KEY = "mp_hdm_collab_col_widths_v1";
+const HDM_COLLAB_COL_DEFAULT_WIDTHS = {
+  data: 150,
+  evento: 560,
+  horas: 100,
+  horario: 340,
+  auditoria: 420,
+};
+const HDM_COLLAB_COL_LIMITS = {
+  data: [110, 240],
+  evento: [260, 900],
+  horas: [76, 160],
+  horario: [260, 720],
+  auditoria: [280, 760],
+};
 const AUDIT_REVIEW_STATUS = [
   { id: "pendente", label: "Pendente" },
   { id: "revisado", label: "Revisado" },
   { id: "justificado", label: "Justificado" },
   { id: "ajuste", label: "Corrigir folha" },
+  { id: "sem_acao", label: "Sem ação" },
   { id: "ignorado", label: "Ignorado" },
 ];
 const AUDIT_REVIEW_LABELS = Object.fromEntries(AUDIT_REVIEW_STATUS.map((s) => [s.id, s.label]));
+const AUDIT_RULE_TREATMENTS = [
+  { id: "acao", label: "Exige ação" },
+  { id: "informativa", label: "Informativa" },
+  { id: "nao_aplicavel", label: "Não aplicável" },
+  { id: "revisao_manual", label: "Revisão manual" },
+];
+const AUDIT_ACTIONABLE_TREATMENTS = new Set(["acao", "revisao_manual"]);
+
+function isAuditActionable(audit) {
+  if (!audit?.memoria || audit.severidade === "ok") return false;
+  if (audit.passivelAcao != null) return Boolean(audit.passivelAcao);
+  return AUDIT_ACTIONABLE_TREATMENTS.has(audit.tratamentoRegra || "acao");
+}
+
+function getAuditDisplayReview(audit, review) {
+  if (!isAuditActionable(audit) && (review?.status || "pendente") === "pendente") {
+    return { ...(review || {}), status: "sem_acao" };
+  }
+  return review;
+}
 
 function readStoredJson(key, fallback) {
   try {
@@ -265,13 +478,54 @@ function getColFilterValue(row, col, { stackHrsMrc = false, isEventsMode = false
     if (raw == null || raw === "") return "";
     return String(raw);
   }
+  if (col === "evento") {
+    const raw = row.evento ?? row.situacaoDesc ?? row.situacao ?? row.situacao_desc ?? "";
+    if (raw == null || raw === "") return "";
+    return String(raw);
+  }
   const raw = row[col];
   if (raw == null || raw === "") return "";
   return String(raw);
 }
 
+const AUDIT_RULE_LABELS = new Map(
+  REGRAS_AUDITORIA_PONTO_META.map((item) => [item.id, item.titulo || item.id]),
+);
+
+function getAuditRuleLabel(code) {
+  const id = String(code || "");
+  return AUDIT_RULE_LABELS.get(id) || id || "(sem regra)";
+}
+
+function getAuditRuleCodes(audit) {
+  if (!audit) return [];
+  const codes = [];
+  if (audit.codigo && audit.severidade !== "ok") codes.push(String(audit.codigo));
+  if (Array.isArray(audit.memoria?.anomalias)) {
+    audit.memoria.anomalias.forEach((item) => {
+      if (item?.codigo) codes.push(String(item.codigo));
+    });
+  }
+  return [...new Set(codes.filter(Boolean))];
+}
+
+function auditPassesRuleFilter(audit, filterEntry) {
+  if (!isHdmColFilterActive(filterEntry)) return true;
+  const codes = getAuditRuleCodes(audit);
+  const { values, cond } = normalizeHdmColFilter(filterEntry);
+  if (values instanceof Set && !codes.some((code) => values.has(code))) return false;
+  if (cond) {
+    const haystack = codes.map((code) => `${code} ${getAuditRuleLabel(code)}`).join(" | ");
+    if (!rowPassesHdmColFilter(haystack, { cond }, "auditoria", (value) => String(value || ""))) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function getColFilterDisplay(val, col) {
   if (val === "" || val == null) return "(vazio)";
+  if (col === "auditoria") return getAuditRuleLabel(val);
   if (col === "_cat" && EVENT_CAT_LABELS[val]) return EVENT_CAT_LABELS[val];
   if (col === "data" || col === "inicio" || col === "termino") return fmtDate(val);
   if (col === "abs") return fmtPct(Number(val));
@@ -384,17 +638,17 @@ function allGroupKeys(nodes, pathPrefix = "") {
 }
 
 /* ── drag + resize hook ── */
-function useDragResize(initW, initH) {
+function useDragResize(initW, initH, storageKey = HDM_POS_KEY, minW = 580, minH = 340) {
   const posRef = useRef(null);
   const sizeRef = useRef(null);
   const [pos, setPos] = useState(() => {
-    const s = readStoredJson(HDM_POS_KEY, null);
+    const s = readStoredJson(storageKey, null);
     const v = s?.pos ?? { x: 0, y: 0 };
     posRef.current = v;
     return v;
   });
   const [size, setSize] = useState(() => {
-    const s = readStoredJson(HDM_POS_KEY, null);
+    const s = readStoredJson(storageKey, null);
     const v = s?.size ?? { w: initW, h: initH };
     sizeRef.current = v;
     return v;
@@ -410,7 +664,7 @@ function useDragResize(initW, initH) {
     const oy = e.clientY - posRef.current.y;
     const move = (mv) => {
       posRef.current = { x: mv.clientX - ox, y: mv.clientY - oy };
-      writeStoredJson(HDM_POS_KEY, { pos: posRef.current, size: sizeRef.current });
+      writeStoredJson(storageKey, { pos: posRef.current, size: sizeRef.current });
       setPos({ ...posRef.current });
     };
     const up = () => {
@@ -421,7 +675,7 @@ function useDragResize(initW, initH) {
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", up);
     document.body.style.userSelect = "none";
-  }, []);
+  }, [storageKey]);
 
   const onResizeStart = useCallback((e) => {
     e.preventDefault();
@@ -432,10 +686,10 @@ function useDragResize(initW, initH) {
       sh = sizeRef.current.h;
     const move = (mv) => {
       sizeRef.current = {
-        w: Math.max(580, sw + mv.clientX - sx),
-        h: Math.max(340, sh + mv.clientY - sy),
+        w: Math.max(minW, sw + mv.clientX - sx),
+        h: Math.max(minH, sh + mv.clientY - sy),
       };
-      writeStoredJson(HDM_POS_KEY, { pos: posRef.current, size: sizeRef.current });
+      writeStoredJson(storageKey, { pos: posRef.current, size: sizeRef.current });
       setSize({ ...sizeRef.current });
     };
     const up = () => {
@@ -446,7 +700,7 @@ function useDragResize(initW, initH) {
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", up);
     document.body.style.userSelect = "none";
-  }, []);
+  }, [minH, minW, storageKey]);
 
   return { pos, size, onDragStart, onResizeStart };
 }
@@ -618,6 +872,7 @@ export function HistoricoDayModal({
   initialGroupBy = null,
   initialAuditOnly = false,
   initialAuditParamsOpen = false,
+  onOpenRadar = null,
 }) {
   const lockColumnLayout = columnPreset === "risco";
   const isApiMode = dataSource === "api";
@@ -644,6 +899,12 @@ export function HistoricoDayModal({
     embedded ? 1200 : isEventsMode ? 1060 : 980,
     embedded ? 720 : 590,
   );
+  const {
+    pos: auditParamsPos,
+    size: auditParamsSize,
+    onDragStart: onAuditParamsDragStart,
+    onResizeStart: onAuditParamsResizeStart,
+  } = useDragResize(920, 720, HDM_AUDIT_PARAMS_POS_KEY, 560, 420);
 
   /* sort */
   const [sortCol, setSortCol] = useState(() =>
@@ -796,13 +1057,24 @@ export function HistoricoDayModal({
   const [isMaximized, setIsMaximized] = useState(true);
   const [calcEv, setCalcEv] = useState(null);
   const [auditMemoria, setAuditMemoria] = useState(null);
+  const [auditQuestion, setAuditQuestion] = useState("resumo");
   const [auditParamsOpen, setAuditParamsOpen] = useState(Boolean(initialAuditParamsOpen));
   const [auditSeverityFilter, setAuditSeverityFilter] = useState("todos");
   const [auditOnly, setAuditOnly] = useState(Boolean(initialAuditOnly));
   const [auditReviewStatusFilter, setAuditReviewStatusFilter] = useState("todos");
   const [auditCriticalPendingOnly, setAuditCriticalPendingOnly] = useState(false);
-  const [collabDetailLimits, setCollabDetailLimits] = useState(() => new Map());
+  const [auditGridFocus, setAuditGridFocus] = useState(false);
+  const [collabColWidths, setCollabColWidths] = useState(() => {
+    try {
+      if (typeof localStorage === "undefined") return HDM_COLLAB_COL_DEFAULT_WIDTHS;
+      const saved = JSON.parse(localStorage.getItem(HDM_COLLAB_COL_WIDTH_KEY) || "null") || {};
+      return { ...HDM_COLLAB_COL_DEFAULT_WIDTHS, ...saved };
+    } catch {
+      return HDM_COLLAB_COL_DEFAULT_WIDTHS;
+    }
+  });
   const [collabGroupLimit, setCollabGroupLimit] = useState(HDM_COLLAB_GROUP_INITIAL_LIMIT);
+  const [collabGroupPage, setCollabGroupPage] = useState(1);
   const auditResultCacheRef = useRef(new Map());
   const [auditReviews, setAuditReviews] = useState(() => {
     try {
@@ -816,8 +1088,10 @@ export function HistoricoDayModal({
     try {
       const defaults = {
         ...DEFAULT_AUDITORIA_PONTO_PARAMS,
+        tratamentoRegras: {},
         eventosIgnoradosAuditoria: DEFAULT_AUDITORIA_PONTO_EVENTOS_IGNORADOS,
         eventosSemMarcacaoOk: DEFAULT_AUDITORIA_PONTO_EVENTOS_SEM_MARCACAO_OK,
+        eventosJornadaPrincipal: DEFAULT_AUDITORIA_PONTO_EVENTOS_JORNADA_PRINCIPAL,
       };
       if (typeof localStorage === "undefined") return defaults;
       const saved = JSON.parse(localStorage.getItem("mp_auditoria_ponto_params") || "null");
@@ -825,22 +1099,65 @@ export function HistoricoDayModal({
     } catch {
       return {
         ...DEFAULT_AUDITORIA_PONTO_PARAMS,
+        tratamentoRegras: {},
         eventosIgnoradosAuditoria: DEFAULT_AUDITORIA_PONTO_EVENTOS_IGNORADOS,
         eventosSemMarcacaoOk: DEFAULT_AUDITORIA_PONTO_EVENTOS_SEM_MARCACAO_OK,
+        eventosJornadaPrincipal: DEFAULT_AUDITORIA_PONTO_EVENTOS_JORNADA_PRINCIPAL,
       };
     }
   });
+  useEffect(() => {
+    try {
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem(HDM_COLLAB_COL_WIDTH_KEY, JSON.stringify(collabColWidths));
+      }
+    } catch {}
+  }, [collabColWidths]);
+  const collabTableMinWidth = useMemo(
+    () => Object.values(collabColWidths).reduce((sum, value) => sum + (Number(value) || 0), 0),
+    [collabColWidths],
+  );
+  const resetCollabColumnWidth = useCallback((colId) => {
+    setCollabColWidths((prev) => ({
+      ...prev,
+      [colId]: HDM_COLLAB_COL_DEFAULT_WIDTHS[colId] || prev[colId],
+    }));
+  }, []);
+  const startCollabColumnResize = useCallback((colId, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = Number(collabColWidths[colId]) || HDM_COLLAB_COL_DEFAULT_WIDTHS[colId] || 160;
+    const [minWidth, maxWidth] = HDM_COLLAB_COL_LIMITS[colId] || [80, 900];
+    const onMove = (moveEvent) => {
+      const nextWidth = Math.max(minWidth, Math.min(maxWidth, Math.round(startWidth + moveEvent.clientX - startX)));
+      setCollabColWidths((prev) => ({ ...prev, [colId]: nextWidth }));
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.classList.remove("hdm-col-resizing");
+    };
+    document.body.classList.add("hdm-col-resizing");
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp, { once: true });
+  }, [collabColWidths]);
   const auditParamsCacheKey = useMemo(() => JSON.stringify(auditParams), [auditParams]);
   const [rankOpen, setRankOpen] = useState(false);
 
   /* stack horário + marcação in one cell */
   const [stackHrsMrc, setStackHrsMrc] = useState(() => {
+    if (initialAuditOnly) return true;
     if (lockColumnLayout) return true;
     if (isPosEmbedded)
       return posEmbeddedSaved.stackHrsMrc ?? posEmbeddedPreset.defaultStackHrsMrc;
     if (isEventsMode) return _hdmSaved.evtStackHrsMrc ?? false;
     return false;
   });
+
+  useEffect(() => {
+    if (initialAuditOnly) setStackHrsMrc(true);
+  }, [initialAuditOnly]);
 
   /* pill quick-filter — null | 'presentes' | 'ausentes' | 'justificadas' | 'extras' | 'ignorar' */
   const [pillFilter, setPillFilter] = useState(() => {
@@ -1139,11 +1456,85 @@ export function HistoricoDayModal({
   const uniqueValsCacheRef = useRef(new Map());
   useEffect(() => {
     uniqueValsCacheRef.current = new Map();
-  }, [isEventsMode, events0, emps0, appliedDateFrom, appliedDateTo, pillFilter]);
+  }, [isEventsMode, events0, emps0, appliedDateFrom, appliedDateTo, pillFilter, groupBy, auditOnly, auditParamsCacheKey]);
 
   const uniqueVals = useCallback(
     (col) => {
-      const cacheKey = `${isEventsMode ? "events" : "emps"}:${col}:${stackHrsMrc ? "stack" : ""}:${appliedDateFrom}:${appliedDateTo}:${pillFilter || ""}`;
+      const auditFilterScope = isEventsMode && !isApiMode && !isPosEmbedded && groupBy[0] === "mat" && auditOnly;
+      if (col === "auditoria") {
+        const activeColFiltersKey = Object.entries(colFilters)
+          .filter(([filterCol, filterEntry]) => filterCol !== "auditoria" && isHdmColFilterActive(filterEntry))
+          .map(([filterCol, filterEntry]) => {
+            const { values, cond } = normalizeHdmColFilter(filterEntry);
+            const valueKey = values instanceof Set ? [...values].sort().join("\u001f") : "*";
+            const condKey = cond ? `${cond.op}:${cond.value}` : "";
+            return `${filterCol}=${valueKey}|${condKey}`;
+          })
+          .sort()
+          .join("\u001e");
+        const cacheKey = `audit-rules:${appliedDateFrom}:${appliedDateTo}:${auditFilterScope ? "audit-all-cats" : pillFilter || ""}:${debouncedSearch || ""}:${posListKey || ""}:${activeColFiltersKey}:${auditParamsCacheKey}`;
+        if (uniqueValsCacheRef.current.has(cacheKey)) return uniqueValsCacheRef.current.get(cacheKey);
+        const q = normalizeSearchText(debouncedSearch);
+        const isMensalEventMode = String(posListKey || "") === "mensal_event";
+        const isSheetImportMode =
+          String(posListKey || "") === "banco_horas" ||
+          String(posListKey || "") === "abonos_pendentes" ||
+          String(posListKey || "") === "abonos_efetuados";
+        const fromKey = normDateKey(appliedDateFrom);
+        const toKey = normDateKey(appliedDateTo);
+        const indices = eventsDateIndex && !isSheetImportMode
+          ? collectEventIndicesInRange(eventsDateIndex, fromKey, toKey)
+          : null;
+        const collectAuditCandidates = (ignoreTextSearch = false) => {
+          const out = [];
+          const scan = (idx) => {
+            const ev = events0[idx];
+            if (!ev) return;
+            const { search: evSearch, normDate: evDate } = eventMeta[idx] || {};
+            if (!auditFilterScope && pillFilter && ev._cat !== pillFilter) return;
+            if (!indices && !isSheetImportMode) {
+              if (fromKey && evDate && evDate < fromKey) return;
+              if (toKey && evDate && evDate > toKey) return;
+            }
+            if (q && !ignoreTextSearch && !searchTextMatches(evSearch, q)) return;
+            for (const [filterCol, filterEntry] of Object.entries(colFilters)) {
+              if (!isHdmColFilterActive(filterEntry)) continue;
+              if (filterCol === "auditoria") continue;
+              const cellVal = getColFilterValue(ev, filterCol, { stackHrsMrc, isEventsMode: true });
+              if (!rowPassesHdmColFilter(cellVal, filterEntry, filterCol, getColFilterDisplay)) return;
+            }
+            out.push(idx);
+          };
+          if (indices) {
+            for (const idx of indices) scan(idx);
+          } else {
+            for (let idx = 0; idx < events0.length; idx++) scan(idx);
+          }
+          return out;
+        };
+        let auditCandidateIndices = collectAuditCandidates(false);
+        if (isMensalEventMode && q && auditCandidateIndices.length === 0) {
+          auditCandidateIndices = collectAuditCandidates(true);
+        }
+        if (auditCandidateIndices.length > HDM_AUDIT_FILTER_SCAN_LIMIT) {
+          auditCandidateIndices = auditCandidateIndices.slice(0, HDM_AUDIT_FILTER_SCAN_LIMIT);
+        }
+        const values = new Set();
+        for (let pos = 0; pos < auditCandidateIndices.length; pos++) {
+          const idx = auditCandidateIndices[pos];
+          const ev = events0[idx];
+          if (!ev) continue;
+          const previousEv = pos > 0 ? events0[auditCandidateIndices[pos - 1]] : null;
+          const audit = getEventAudit(ev, previousEv);
+          getAuditRuleCodes(audit).forEach((code) => values.add(code));
+        }
+        const result = [...values].sort((a, b) =>
+          COLLATOR_PT.compare(getAuditRuleLabel(a), getAuditRuleLabel(b)),
+        );
+        uniqueValsCacheRef.current.set(cacheKey, result);
+        return result;
+      }
+      const cacheKey = `${isEventsMode ? "events" : "emps"}:${col}:${stackHrsMrc ? "stack" : ""}:${appliedDateFrom}:${appliedDateTo}:${auditFilterScope ? "audit-all-cats" : pillFilter || ""}`;
       if (uniqueValsCacheRef.current.has(cacheKey)) return uniqueValsCacheRef.current.get(cacheKey);
       const ctx = { stackHrsMrc, isEventsMode };
       let rows;
@@ -1156,7 +1547,7 @@ export function HistoricoDayModal({
         rows = [];
         const pushIdx = (idx) => {
           const ev = events0[idx];
-          if (pillFilter && ev?._cat !== pillFilter) return;
+          if (!auditFilterScope && pillFilter && ev?._cat !== pillFilter) return;
           rows.push(ev);
         };
         if (indices) {
@@ -1181,6 +1572,8 @@ export function HistoricoDayModal({
     },
     [
       isEventsMode,
+      isApiMode,
+      isPosEmbedded,
       events0,
       eventMeta,
       eventsDateIndex,
@@ -1189,6 +1582,12 @@ export function HistoricoDayModal({
       pillFilter,
       emps0,
       stackHrsMrc,
+      groupBy,
+      auditOnly,
+      colFilters,
+      debouncedSearch,
+      posListKey,
+      auditParamsCacheKey,
     ],
   );
 
@@ -1297,6 +1696,7 @@ export function HistoricoDayModal({
         if (q && !ignoreTextSearch && !searchTextMatches(evSearch, q)) return;
         for (const [col, filterEntry] of Object.entries(colFilters)) {
           if (!isHdmColFilterActive(filterEntry)) continue;
+          if (col === "auditoria") continue;
           const cellVal = getColFilterValue(ev, col, { stackHrsMrc, isEventsMode: true });
           if (!rowPassesHdmColFilter(cellVal, filterEntry, col, getColFilterDisplay)) return;
         }
@@ -1352,6 +1752,7 @@ export function HistoricoDayModal({
       let pass = true;
       for (const [col, filterEntry] of Object.entries(colFilters)) {
         if (!isHdmColFilterActive(filterEntry)) continue;
+        if (col === "auditoria") continue;
         const cellVal = getColFilterValue(ev, col, { stackHrsMrc, isEventsMode: true });
         if (!rowPassesHdmColFilter(cellVal, filterEntry, col, getColFilterDisplay)) {
           pass = false;
@@ -1521,10 +1922,36 @@ export function HistoricoDayModal({
     [sortedEmpIndices, filteredEmps],
   );
 
+  const auditSameDayEventsMap = useMemo(() => {
+    const map = new Map();
+    for (const ev of events0) {
+      const key = auditSameDayKey(ev);
+      if (!key) continue;
+      const hasContent = Boolean(
+        eventDateKey(ev) ||
+          String(ev?.cod || ev?.codigo || ev?.evento || ev?.situacaoDesc || "").trim() ||
+          Number(ev?.horas || 0) > 0 ||
+          String(ev?.horario || "").trim() ||
+          String(ev?.marcacao || "").trim(),
+      );
+      if (!hasContent) continue;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push({
+        cod: ev?.cod || ev?.codigo || "",
+        evento: ev?.evento || ev?.situacaoDesc || "",
+        _cat: ev?._cat || ev?.categoria || "",
+      });
+    }
+    return map;
+  }, [events0]);
+
   const collaboratorAuditSummary = useMemo(() => {
     if (!isEventsMode || isApiMode || isPosEmbedded || groupBy[0] !== "mat") return null;
     const byColab = new Map();
-    for (const idx of filteredEventIndices) {
+    const summaryIndices = filteredEventIndices.length > HDM_AUDIT_SUMMARY_FULL_LIMIT
+      ? filteredEventIndices.slice(0, HDM_AUDIT_SUMMARY_FULL_LIMIT)
+      : filteredEventIndices;
+    for (const idx of summaryIndices) {
       const ev = events0[idx];
       if (!ev) continue;
       const key = String(ev.mat || ev.nome || "__sem_colaborador__");
@@ -1575,15 +2002,9 @@ export function HistoricoDayModal({
   const collabGroupInitialLimit = auditWorkspaceMode
     ? HDM_AUDIT_COLLAB_GROUP_INITIAL_LIMIT
     : HDM_COLLAB_GROUP_INITIAL_LIMIT;
-  const collabGroupStep = auditWorkspaceMode ? HDM_AUDIT_COLLAB_GROUP_STEP : HDM_COLLAB_GROUP_STEP;
-  const collabDetailInitialLimit = auditWorkspaceMode
-    ? HDM_AUDIT_COLLAB_DETAIL_INITIAL_LIMIT
-    : HDM_COLLAB_DETAIL_INITIAL_LIMIT;
-  const collabDetailStep = auditWorkspaceMode ? HDM_AUDIT_COLLAB_DETAIL_STEP : HDM_COLLAB_DETAIL_STEP;
-
   useEffect(() => {
-    setCollabDetailLimits(new Map());
     setCollabGroupLimit(collabGroupInitialLimit);
+    setCollabGroupPage(1);
   }, [
     auditSeverityFilter,
     auditOnly,
@@ -1989,6 +2410,21 @@ export function HistoricoDayModal({
     return nodes.flatMap((node) => collectGroupLeafIndices(node.children));
   };
 
+  const sortEventIndicesByDateTime = useCallback(
+    (indices = []) =>
+      [...indices].sort((a, b) => {
+        const ea = tableDataRows[a];
+        const eb = tableDataRows[b];
+        const da = eventDateKey(ea) || "";
+        const db = eventDateKey(eb) || "";
+        if (da !== db) return da.localeCompare(db);
+        const ha = String(ea?.horario || "").localeCompare(String(eb?.horario || ""), "pt-BR", { numeric: true });
+        if (ha) return ha;
+        return String(ea?.evento || ea?.cod || "").localeCompare(String(eb?.evento || eb?.cod || ""), "pt-BR", { numeric: true });
+      }),
+    [tableDataRows],
+  );
+
   const eventObservationText = (ev) =>
     String(
       ev?.observacao ||
@@ -2012,8 +2448,150 @@ export function HistoricoDayModal({
     );
   };
 
+  const collectAuditDetailLeafIndices = useCallback((node) => {
+    const baseIndices = collectGroupLeafIndices(node.children);
+    if (!auditWorkspaceMode || !baseIndices.length) return sortEventIndicesByDateTime(baseIndices);
+
+    const first = tableDataRows[baseIndices[0]];
+    const matKey = String(first?.mat || "").trim();
+    const nameKey = normalizeSearchText(first?.nome || "");
+    const fromKey = normDateKey(appliedDateFrom);
+    const toKey = normDateKey(appliedDateTo);
+    const allIndices = [];
+
+    for (let idx = 0; idx < tableDataRows.length; idx++) {
+      const ev = tableDataRows[idx];
+      if (!hasCollaboratorEventContent(ev)) continue;
+      const sameCollaborator = matKey
+        ? String(ev?.mat || "").trim() === matKey
+        : normalizeSearchText(ev?.nome || "") === nameKey;
+      if (!sameCollaborator) continue;
+      const evDate = eventDateKey(ev);
+      if (fromKey && evDate && evDate < fromKey) continue;
+      if (toKey && evDate && evDate > toKey) continue;
+      allIndices.push(idx);
+    }
+
+    return sortEventIndicesByDateTime(allIndices.length ? allIndices : baseIndices);
+  }, [
+    auditWorkspaceMode,
+    tableDataRows,
+    appliedDateFrom,
+    appliedDateTo,
+    sortEventIndicesByDateTime,
+  ]);
+
   function splitTimeTokens(value) {
-    return stripHorarioCode(value).split(/\s+/).filter(Boolean);
+    return normalizeFaltaMarcacaoToken(value)
+      .split(/\s+/)
+      .filter((token) => /^\d{1,2}:\d{2}$/.test(token));
+  }
+  function splitMarkDisplayTokens(value) {
+    return normalizeFaltaMarcacaoToken(value)
+      .split(/\s+/)
+      .filter((token) => token === "FM" || /^\d{1,2}:\d{2}$/.test(token));
+  }
+  function timeTokenToMinutes(token) {
+    const m = String(token || "").match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    return Number(m[1]) * 60 + Number(m[2]);
+  }
+  function buildTimeSequence(parts) {
+    let last = null;
+    return parts.map((token) => {
+      const base = timeTokenToMinutes(token);
+      if (base == null) return { token, minutes: null };
+      let minutes = base;
+      while (last != null && minutes < last) minutes += 1440;
+      last = minutes;
+      return { token, minutes };
+    });
+  }
+  function formatMarkDiff(diff) {
+    if (diff === 0) return "";
+    return `${diff > 0 ? "+" : ""}${diff}m`;
+  }
+  function buildMarkDisplaySlots(prevParts, realParts) {
+    const tolerance = Math.max(0, Number(auditParams?.toleranciaMinutos) || 0);
+    const prevSeq = buildTimeSequence(prevParts);
+    const realSeq = buildTimeSequence(realParts);
+    const slots = prevSeq.map((item) => ({
+      prev: item.token || "",
+      prevMinutes: item.minutes,
+      real: "",
+      diffText: "",
+      severe: false,
+      sign: "neutral",
+    }));
+    const comparableRealSeq = realSeq.filter((item) => item.minutes != null);
+    if (prevSeq.length && comparableRealSeq.length === prevSeq.length && realSeq.every((item) => item.minutes != null)) {
+      return slots.map((slot, idx) => {
+        const realItem = realSeq[idx];
+        const diff = realItem.minutes - slot.prevMinutes;
+        return {
+          ...slot,
+          real: realItem.token || "",
+          diffText: formatMarkDiff(diff),
+          severe: Math.abs(diff) > tolerance,
+          sign: diff < 0 ? "neg" : diff > 0 ? "pos" : "neutral",
+        };
+      });
+    }
+    const usedPrev = new Set();
+
+    realSeq.forEach((realItem) => {
+      if (realItem.minutes == null) {
+        const emptyIdx = slots.findIndex((slot, idx) => !usedPrev.has(idx) && !slot.real);
+        if (emptyIdx >= 0) {
+          usedPrev.add(emptyIdx);
+          slots[emptyIdx] = { ...slots[emptyIdx], real: realItem.token || "" };
+          return;
+        }
+        slots.push({
+          prev: "",
+          prevMinutes: null,
+          real: realItem.token || "",
+          diffText: "",
+          severe: false,
+          sign: "neutral",
+        });
+        return;
+      }
+      let bestIdx = -1;
+      let bestDistance = Infinity;
+      prevSeq.forEach((prevItem, idx) => {
+        if (usedPrev.has(idx) || prevItem.minutes == null) return;
+        const distance = Math.abs(realItem.minutes - prevItem.minutes);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestIdx = idx;
+        }
+      });
+
+      if (bestIdx >= 0) {
+        usedPrev.add(bestIdx);
+        const diff = realItem.minutes - slots[bestIdx].prevMinutes;
+        slots[bestIdx] = {
+          ...slots[bestIdx],
+          real: realItem.token || "",
+          diffText: formatMarkDiff(diff),
+          severe: Math.abs(diff) > tolerance,
+          sign: diff < 0 ? "neg" : diff > 0 ? "pos" : "neutral",
+        };
+        return;
+      }
+
+      slots.push({
+        prev: "",
+        prevMinutes: null,
+        real: realItem.token || "",
+        diffText: "",
+        severe: false,
+        sign: "neutral",
+      });
+    });
+
+    return slots.length ? slots : [{ prev: "", real: "", diffText: "", severe: false, sign: "neutral" }];
   }
   const buildPontoBritanicoMap = (indices) => {
     const map = new Map();
@@ -2027,11 +2605,18 @@ export function HistoricoDayModal({
     }
     return map;
   };
+  function auditSameDayKey(ev) {
+    const dateKey = eventDateKey(ev);
+    if (!dateKey) return "";
+    const personKey = String(ev?.mat || "").trim() || normalizeSearchText(ev?.nome || "");
+    return personKey ? `${personKey}|${dateKey}` : "";
+  }
   function eventWithPreviousJourney(ev, previousEv, britanicoMap = null) {
     const assinatura = splitTimeTokens(ev?.marcacao || "").join(" ");
     const repeticoes = assinatura && britanicoMap?.has(assinatura) ? britanicoMap.get(assinatura).size : 0;
     return {
       ...ev,
+      sameDayEvents: auditSameDayEventsMap.get(auditSameDayKey(ev)) || [],
       previousData: previousEv ? eventDateKey(previousEv) : "",
       previousMarcacao: previousEv?.marcacao || "",
       pontoBritanicoAssinatura: assinatura,
@@ -2051,6 +2636,9 @@ export function HistoricoDayModal({
       input?.previousMarcacao || "",
       input?.pontoBritanicoAssinatura || "",
       input?.pontoBritanicoRepeticoes || 0,
+      (Array.isArray(input?.sameDayEvents) ? input.sameDayEvents : [])
+        .map((item) => `${item?.cod || ""}:${item?.evento || ""}:${item?._cat || ""}`)
+        .join("~"),
       auditParamsCacheKey,
     ]
       .map((part) => String(part ?? "").replace(/\s+/g, " ").trim())
@@ -2068,6 +2656,65 @@ export function HistoricoDayModal({
   function getEventAudit(ev, previousEv, britanicoMap = null) {
     return getCachedAudit(eventWithPreviousJourney(ev, previousEv, britanicoMap));
   }
+
+  const inferRadarEventoFromAudit = (ev, auditoria = null) => {
+    const text = normText(
+      [
+        ev?.evento,
+        ev?.situacaoDesc,
+        ev?._cat,
+        auditoria?.observacao,
+        auditoria?.regraAplicada,
+        auditoria?.codigo,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+    if (text.includes("interjornada") || text.includes("11h") || text.includes("11 horas")) {
+      return "Interjornada insuficiente";
+    }
+    if (
+      text.includes("intervalo") ||
+      text.includes("refeicao") ||
+      text.includes("refeição") ||
+      /\b(1h|sir|6hsi)\b/.test(text)
+    ) {
+      return "Intervalo intrajornada";
+    }
+    if (text.includes("extra") || text.includes("sobrejornada") || text.includes("excedente")) {
+      return "Horas extras";
+    }
+    if (text.includes("ferias") || text.includes("férias")) return "Ferias";
+    if (text.includes("marcacao") || text.includes("marcação") || text.includes("ponto")) {
+      return "Irregularidade de ponto / REP";
+    }
+    return ev?.evento || ev?.situacaoDesc || "";
+  };
+
+  const openRadarFromAudit = (ev, auditoria = null) => {
+    const radarEvento = inferRadarEventoFromAudit(ev, auditoria);
+    const detail = {
+      page: "eventos",
+      openPlaybook: true,
+      evento: radarEvento || ev?.evento || ev?.situacaoDesc || "",
+      eventoOriginal: ev?.evento || ev?.situacaoDesc || "",
+      codigo: ev?.cod || ev?.codigo || "",
+      colaborador: ev?.nome || "",
+      matricula: ev?.mat || "",
+      data: eventDateKey(ev) || "",
+    };
+    if (typeof onOpenRadar === "function") {
+      onOpenRadar(detail);
+      return;
+    }
+    try {
+      window.dispatchEvent(
+        new CustomEvent("pb-open-radar", {
+          detail,
+        }),
+      );
+    } catch {}
+  };
 
   const makeAuditReviewKey = (ev, audit) =>
     [
@@ -2147,7 +2794,10 @@ export function HistoricoDayModal({
     if (!collaboratorDetailMode) return summary;
 
     const byColab = new Map();
-    for (const idx of filteredEventIndices) {
+    const summaryIndices = filteredEventIndices.length > HDM_AUDIT_SUMMARY_FULL_LIMIT
+      ? filteredEventIndices.slice(0, HDM_AUDIT_SUMMARY_FULL_LIMIT)
+      : filteredEventIndices;
+    for (const idx of summaryIndices) {
       const ev = tableDataRows[idx];
       if (!ev || !hasCollaboratorEventContent(ev)) continue;
       const key = String(ev.mat || ev.nome || "__sem_colaborador__");
@@ -2173,13 +2823,13 @@ export function HistoricoDayModal({
       ordered.forEach((ev, idx) => {
         const audit = getEventAudit(ev, ordered[idx - 1], britanicoMap);
         if (!audit.memoria || audit.severidade === "ok") return;
-        const review = getAuditReview(makeAuditReviewKey(ev, audit));
+        const review = getAuditDisplayReview(audit, getAuditReview(makeAuditReviewKey(ev, audit)));
         const status = review?.status || "pendente";
         summary.total += 1;
         summary[status] = (summary[status] || 0) + 1;
         if (status !== "pendente") summary.tratado += 1;
-        if (status === "pendente" && audit.severidade === "critica") summary.criticaPendente += 1;
-        if (status === "pendente" && audit.severidade === "alta") summary.altaPendente += 1;
+        if (status === "pendente" && isAuditActionable(audit) && audit.severidade === "critica") summary.criticaPendente += 1;
+        if (status === "pendente" && isAuditActionable(audit) && audit.severidade === "alta") summary.altaPendente += 1;
       });
     }
 
@@ -2193,10 +2843,29 @@ export function HistoricoDayModal({
     auditReviews,
   ]);
 
+  const renderCollabResizeHandle = (colId) => (
+    <span
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Redimensionar coluna ${colId}`}
+      title="Arraste para redimensionar. Duplo clique restaura."
+      className="hdm-col-resize-handle"
+      onMouseDown={(e) => startCollabColumnResize(colId, e)}
+      onDoubleClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        resetCollabColumnWidth(colId);
+      }}
+    />
+  );
+
   const renderCollaboratorDetailHeader = () => (
     <tr className="hdm-collab-subhead-row">
-      <th>Data</th>
-      <th>
+      <th className="hdm-resizable-th">
+        <span>Data</span>
+        {renderCollabResizeHandle("data")}
+      </th>
+      <th className="hdm-resizable-th">
         <div className="hdm-collab-filter-head">
           <span>Evento</span>
           <button
@@ -2214,8 +2883,9 @@ export function HistoricoDayModal({
             ▼
           </button>
         </div>
+        {renderCollabResizeHandle("evento")}
       </th>
-      <th>
+      <th className="hdm-resizable-th">
         <div className="hdm-collab-filter-head">
           <span>Horas</span>
           <button
@@ -2233,85 +2903,151 @@ export function HistoricoDayModal({
             ▼
           </button>
         </div>
+        {renderCollabResizeHandle("horas")}
       </th>
-      <th>Horário / Marcação</th>
-      <th className="hdm-audit-th">
-        <span>Auditoria</span>
-        <select
-          value={auditSeverityFilter}
-          onChange={(e) => setAuditSeverityFilter(e.target.value)}
-          onClick={(e) => e.stopPropagation()}
-          title="Filtrar por severidade"
-        >
-          <option value="todos">Todos</option>
-          <option value="critica">Critica</option>
-          <option value="alta">Alta</option>
-          <option value="media">Media</option>
-          <option value="baixa">Baixa</option>
-          <option value="ok">OK</option>
-        </select>
+      <th className="hdm-resizable-th">
+        <span>Horário / Marcação</span>
+        {renderCollabResizeHandle("horario")}
+      </th>
+      <th className="hdm-audit-th hdm-resizable-th">
+        <div className="hdm-collab-filter-head">
+          <span>Auditoria</span>
+          <button
+            type="button"
+            ref={(el) => {
+              filterBtnRefs.current.auditoria = el;
+            }}
+            className={`hdm-filt-btn${isFiltered("auditoria") ? " active" : ""}`}
+            onClick={(e) => {
+              filterBtnRefs.current.auditoria = e.currentTarget;
+              openFilter("auditoria");
+            }}
+            title="Filtrar por regra acionada"
+          >
+            â–¼
+          </button>
+        </div>
+        {renderCollabResizeHandle("auditoria")}
       </th>
     </tr>
   );
 
   const renderCollaboratorDetailRows = (nodes) => {
     if (!nodes || !nodes.length) return null;
-    const candidateNodes = auditWorkspaceMode ? nodes : nodes.slice(0, collabGroupLimit);
+    const pageSize = Math.max(1, Number(collabGroupLimit) || collabGroupInitialLimit || 24);
+    const currentPage = Math.max(1, Number(collabGroupPage) || 1);
+    const pageStart = (currentPage - 1) * pageSize;
+    const pageEnd = pageStart + pageSize;
+    const needsAuditDuringFilter =
+      auditSeverityFilter !== "todos" ||
+      auditReviewStatusFilter !== "todos" ||
+      (auditCriticalPendingOnly && auditSeverityFilter !== "todos") ||
+      isFiltered("auditoria");
+    const shouldScanAllGroups = auditWorkspaceMode && needsAuditDuringFilter;
+    const candidateNodes = shouldScanAllGroups ? nodes : nodes.slice(pageStart, pageEnd);
     const preparedNodes = candidateNodes.map((node) => {
-      const sourceLeafIndices = collectGroupLeafIndices(node.children);
+      const sourceLeafIndices = collectAuditDetailLeafIndices(node);
       const britanicoMap = buildPontoBritanicoMap(sourceLeafIndices);
-      const needsAuditDuringFilter =
-        auditOnly ||
-        auditSeverityFilter !== "todos" ||
-        auditReviewStatusFilter !== "todos" ||
-        auditCriticalPendingOnly;
       const leafEntries = [];
+      const sourceEntries = [];
+      const matchedEntries = [];
+      const hasDisplayColFilters = Object.values(colFilters).some(isHdmColFilterActive);
       sourceLeafIndices.forEach((idx, sourcePos) => {
         const ev = tableDataRows[idx];
         if (!hasCollaboratorEventContent(ev)) return;
         let audit = null;
         let reviewKey = "";
         let review = null;
-        if (needsAuditDuringFilter) {
+        if (needsAuditDuringFilter || auditWorkspaceMode) {
           audit = getEventAudit(ev, tableDataRows[sourceLeafIndices[sourcePos - 1]], britanicoMap);
-          if (auditOnly && audit.severidade === "ok") return;
+          reviewKey = makeAuditReviewKey(ev, audit);
+          review = getAuditDisplayReview(audit, getAuditReview(reviewKey));
+        }
+        const entry = { idx, sourcePos, audit, reviewKey, review };
+        sourceEntries.push(entry);
+        let passesDisplayFilters = true;
+        if (hasDisplayColFilters) {
+          for (const [col, filterEntry] of Object.entries(colFilters)) {
+            if (!isHdmColFilterActive(filterEntry)) continue;
+            if (col === "auditoria") continue;
+            const cellVal = getColFilterValue(ev, col, { stackHrsMrc, isEventsMode: true });
+            if (!rowPassesHdmColFilter(cellVal, filterEntry, col, getColFilterDisplay)) {
+              passesDisplayFilters = false;
+              break;
+            }
+          }
+        }
+        let passesAuditFilter = true;
+        if (needsAuditDuringFilter) {
+          if (!auditPassesRuleFilter(audit, colFilters.auditoria)) passesAuditFilter = false;
+          if (auditOnly && audit.severidade === "ok") passesAuditFilter = false;
           if (auditSeverityFilter !== "todos") {
             const severityOk = auditSeverityFilter === "ok"
               ? audit.severidade === "ok"
               : audit.severidade === auditSeverityFilter;
-            if (!severityOk) return;
+            if (!severityOk) passesAuditFilter = false;
           }
-          reviewKey = makeAuditReviewKey(ev, audit);
-          review = getAuditReview(reviewKey);
-          if (auditReviewStatusFilter !== "todos" && review.status !== auditReviewStatusFilter) return;
+          if (auditReviewStatusFilter !== "todos" && review.status !== auditReviewStatusFilter) passesAuditFilter = false;
           if (
             auditCriticalPendingOnly &&
-            !(review.status === "pendente" && (audit.severidade === "critica" || audit.severidade === "alta"))
+            !(review.status === "pendente" && isAuditActionable(audit) && (audit.severidade === "critica" || audit.severidade === "alta"))
           ) {
-            return;
+            passesAuditFilter = false;
           }
         }
-        leafEntries.push({ idx, sourcePos, audit, reviewKey, review });
+        const shouldDisplayEntry = passesDisplayFilters && passesAuditFilter;
+        if (passesAuditFilter && passesDisplayFilters) matchedEntries.push(entry);
+        if (shouldDisplayEntry) leafEntries.push(entry);
       });
       const groupKey = `${node.colKey}:${node.label}`;
-      const visibleLimit = collabDetailLimits.get(groupKey) || collabDetailInitialLimit;
-      const visibleEntries = leafEntries.slice(0, visibleLimit);
-      const remaining = leafEntries.length - visibleEntries.length;
-      const firstRow = leafEntries.length ? tableDataRows[leafEntries[0].idx] : null;
+      const visibleEntries = leafEntries;
+      if (needsAuditDuringFilter && !matchedEntries.length) return null;
+      const firstRow =
+        (leafEntries.length ? tableDataRows[leafEntries[0].idx] : null) ||
+        (sourceEntries.length ? tableDataRows[sourceEntries[0].idx] : null);
       if (!firstRow) return null;
-      return { node, sourceLeafIndices, britanicoMap, leafEntries, groupKey, visibleLimit, visibleEntries, remaining, firstRow };
+      const summaryEntries = auditWorkspaceMode ? sourceEntries : leafEntries;
+      const severitySummary = summaryEntries.reduce(
+        (acc, entry) => {
+          const ev = tableDataRows[entry.idx];
+          const audit = entry.audit || getEventAudit(ev, tableDataRows[sourceLeafIndices[entry.sourcePos - 1]], britanicoMap);
+          const reviewKey = entry.reviewKey || makeAuditReviewKey(ev, audit);
+          const review = entry.review || getAuditDisplayReview(audit, getAuditReview(reviewKey));
+          const severity = audit.severidade || "ok";
+          acc[severity] = (acc[severity] || 0) + 1;
+          if (review.status === "pendente" && isAuditActionable(audit)) {
+            acc.pendente += 1;
+            if (severity === "critica") acc.criticaPendente += 1;
+            if (severity === "alta") acc.altaPendente += 1;
+          }
+          if (review.status === "sem_acao") acc.semAcao += 1;
+          return acc;
+        },
+        { critica: 0, alta: 0, media: 0, baixa: 0, ok: 0, pendente: 0, criticaPendente: 0, altaPendente: 0, semAcao: 0 },
+      );
+      return { node, sourceLeafIndices, sourceEntries, britanicoMap, leafEntries, groupKey, visibleEntries, firstRow, severitySummary };
     }).filter(Boolean);
-    const visiblePreparedNodes = preparedNodes.slice(0, collabGroupLimit);
-    const hiddenGroups = Math.max(
-      0,
-      (auditWorkspaceMode ? preparedNodes.length : nodes.length) - visiblePreparedNodes.length,
-    );
+    const totalGroupCount = shouldScanAllGroups ? preparedNodes.length : nodes.length;
+    const totalPages = Math.max(1, Math.ceil(totalGroupCount / pageSize));
+    const boundedPage = Math.min(currentPage, totalPages);
+    const boundedStart = (boundedPage - 1) * pageSize;
+    const boundedEnd = boundedStart + pageSize;
+    const visiblePreparedNodes = shouldScanAllGroups
+      ? preparedNodes.slice(boundedStart, boundedEnd)
+      : preparedNodes;
+    const firstVisibleGroup = totalGroupCount ? boundedStart + 1 : 0;
+    const lastVisibleGroup = Math.min(totalGroupCount, boundedStart + visiblePreparedNodes.length);
     const rendered = visiblePreparedNodes.flatMap((prepared) => {
-      const { node, sourceLeafIndices, britanicoMap, leafEntries, groupKey, visibleLimit, visibleEntries, remaining, firstRow } = prepared;
+      const { node, sourceLeafIndices, sourceEntries, britanicoMap, leafEntries, groupKey, visibleEntries, firstRow, severitySummary } = prepared;
       const mat = firstRow?.mat || node.label || "";
       const nome = firstRow?.nome || "";
       const depto = firstRow?.depto || firstRow?.departamento || "";
       const groupLabel = `${mat}${nome ? ` - ${nome}` : ""}`;
+      const visibleDayCounts = visibleEntries.reduce((acc, entry) => {
+        const key = eventDateKey(tableDataRows[entry.idx]) || "sem-data";
+        acc.set(key, (acc.get(key) || 0) + 1);
+        return acc;
+      }, new Map());
       return [
         <tr key={`${node.colKey}:${node.label}:title`} className="hdm-collab-title-row">
           <td colSpan={5}>
@@ -2331,29 +3067,67 @@ export function HistoricoDayModal({
               </span>
               <strong>{groupLabel}</strong>
               {depto ? <span className="hdm-collab-dept">Depto: {depto}</span> : null}
-              <span className="hdm-grp-meta"> · {leafEntries.length.toLocaleString("pt-BR")} eventos</span>
+              <span className="hdm-grp-meta">
+                {" · "}
+                {sourceEntries.length.toLocaleString("pt-BR")} eventos
+                {leafEntries.length !== sourceEntries.length
+                  ? ` · ${leafEntries.length.toLocaleString("pt-BR")} exibidos`
+                  : ""}
+              </span>
+              <span className="hdm-collab-title-badges" aria-label="Resumo da auditoria do colaborador">
+                {severitySummary.criticaPendente > 0 ? <span className="is-critica">Crit. pend. {severitySummary.criticaPendente.toLocaleString("pt-BR")}</span> : null}
+                {severitySummary.altaPendente > 0 ? <span className="is-alta">Altas pend. {severitySummary.altaPendente.toLocaleString("pt-BR")}</span> : null}
+                {severitySummary.media > 0 ? <span className="is-media">Med. {severitySummary.media.toLocaleString("pt-BR")}</span> : null}
+                {severitySummary.semAcao > 0 ? <span className="is-sem-acao">Sem ação {severitySummary.semAcao.toLocaleString("pt-BR")}</span> : null}
+                {severitySummary.ok > 0 ? <span className="is-ok">OK {severitySummary.ok.toLocaleString("pt-BR")}</span> : null}
+              </span>
             </button>
           </td>
         </tr>,
         !collapsed.has(groupKey) ? (
           <React.Fragment key={`${node.colKey}:${node.label}:rows`}>
-            {visibleEntries.map(({ idx, sourcePos, audit, reviewKey: preReviewKey, review: preReview }) => {
+            {visibleEntries.map(({ idx, sourcePos, audit, reviewKey: preReviewKey, review: preReview }, visiblePos) => {
               const ev = tableDataRows[idx];
               const dk = eventDateKey(ev);
+              const prevVisible = visiblePos > 0 ? tableDataRows[visibleEntries[visiblePos - 1].idx] : null;
+              const startsDay = visiblePos === 0 || eventDateKey(prevVisible) !== dk;
+              const startsMultiEventDay = startsDay && (visibleDayCounts.get(dk || "sem-data") || 0) > 1;
               const mrc = marcacaoDistinctFromHorario(ev.horario, ev.marcacao) || ev.marcacao || "";
               const horarioParts = splitTimeTokens(ev.horario);
-              const marcacaoParts = splitTimeTokens(mrc);
-              const markSlots = Math.max(horarioParts.length, marcacaoParts.length, 1);
+              const marcacaoParts = splitMarkDisplayTokens(mrc);
+              const hasRealMarks = marcacaoParts.length > 0;
+              const markDisplaySlots = buildMarkDisplaySlots(horarioParts, marcacaoParts);
+              const markSlots = markDisplaySlots.length;
               const previousEv = tableDataRows[sourceLeafIndices[sourcePos - 1]];
               const auditoria = audit || getEventAudit(ev, previousEv, britanicoMap);
-              const obs = auditoria.observacao || eventObservationText(ev);
+              const obs = String(auditoria.observacao || eventObservationText(ev) || "")
+                .replace(/^(Critica|Crítica|Alta|Media|Média|Baixa|OK):\s*/i, "");
               const reviewKey = preReviewKey || makeAuditReviewKey(ev, auditoria);
-              const review = preReview || getAuditReview(reviewKey);
+              const review = preReview || getAuditDisplayReview(auditoria, getAuditReview(reviewKey));
+              const openAuditMemoria = () => {
+                setAuditQuestion("resumo");
+                setAuditMemoria({
+                  ...auditoria.memoria,
+                  reviewKey,
+                  review,
+                  colaborador: ev.nome || "",
+                  matricula: ev.mat || "",
+                  departamento: ev.depto || ev.departamento || "",
+                  data: fmtDate(eventDateKey(ev)),
+                });
+              };
               return (
-                <tr key={`${node.colKey}:${node.label}:${idx}`} className={`hdm-collab-event-row ${evtRowClass(ev)}`}>
-                  <td className="hdm-collab-date">
-                    <strong>{fmtDate(dk)}</strong>
-                    {fmtWeekdayShort(dk) ? <span>{fmtWeekdayShort(dk)}</span> : null}
+                <tr
+                  key={`${node.colKey}:${node.label}:${idx}`}
+                  className={`hdm-collab-event-row ${evtRowClass(ev)}${startsMultiEventDay ? " hdm-day-start" : ""}`}
+                >
+                  <td className={`hdm-collab-date${startsDay ? "" : " hdm-collab-date-repeat"}`}>
+                    {startsDay ? (
+                      <>
+                        <strong>{fmtDate(dk)}</strong>
+                        {fmtWeekdayShort(dk) ? <span>{fmtWeekdayShort(dk)}</span> : null}
+                      </>
+                    ) : null}
                   </td>
                   <td className="hdm-collab-event">
                     <div>{ev.cod ? `${ev.cod} - ` : ""}{ev.evento || ev.situacaoDesc || "Evento sem descrição"}</div>
@@ -2365,25 +3139,49 @@ export function HistoricoDayModal({
                     onClick={() => setCalcEv(ev)}
                   >
                     <div className="hdm-collab-mark-line" style={{ "--mark-slots": markSlots }}>
-                      {Array.from({ length: markSlots }).map((_, partIdx) => (
-                        <span key={`${idx}-hor-${partIdx}`} className="hdm-collab-time-slot">
-                          {horarioParts[partIdx] || ""}
-                        </span>
-                      ))}
+                      <span className="hdm-collab-mark-label">Prev:</span>
+                      <span className="hdm-collab-mark-values">
+                        {markDisplaySlots.map((slot, partIdx) => (
+                          <span key={`${idx}-hor-${partIdx}`} className="hdm-collab-time-slot">
+                            {slot.prev || ""}
+                          </span>
+                        ))}
+                      </span>
                     </div>
-                    <div className="hdm-collab-mark-line hdm-collab-marcacao" style={{ "--mark-slots": markSlots }}>
-                      {Array.from({ length: markSlots }).map((_, partIdx) => (
-                        <span
-                          key={`${idx}-mrc-${partIdx}`}
-                          className={`hdm-collab-time-slot ${partIdx % 2 === 0 ? "hdm-marc-in" : "hdm-marc-out"}`}
-                        >
-                          {marcacaoParts[partIdx] || ""}
-                        </span>
-                      ))}
-                    </div>
+                    {hasRealMarks ? (
+                      <>
+                        <div className="hdm-collab-mark-line hdm-collab-marcacao" style={{ "--mark-slots": markSlots }}>
+                          <span className="hdm-collab-mark-label">Real:</span>
+                          <span className="hdm-collab-mark-values">
+                            {markDisplaySlots.map((slot, partIdx) => (
+                              <span
+                                key={`${idx}-mrc-${partIdx}`}
+                                className={`hdm-collab-time-slot ${partIdx % 2 === 0 ? "hdm-marc-in" : "hdm-marc-out"}`}
+                              >
+                                {slot.real || ""}
+                              </span>
+                            ))}
+                          </span>
+                        </div>
+                        <div className="hdm-collab-mark-line hdm-collab-diff" style={{ "--mark-slots": markSlots }}>
+                          <span className="hdm-collab-mark-label">Dif:</span>
+                          <span className="hdm-collab-mark-values">
+                            {markDisplaySlots.map((slot, partIdx) => (
+                              <span
+                                key={`${idx}-dif-${partIdx}`}
+                                className={`hdm-collab-time-slot hdm-diff-slot hdm-diff-${slot.sign}${slot.severe ? " is-severe" : ""}`}
+                              >
+                                {slot.diffText}
+                              </span>
+                            ))}
+                          </span>
+                        </div>
+                      </>
+                    ) : null}
                   </td>
                   <td
                     className={`hdm-collab-obs ${auditoria.severidade && auditoria.severidade !== "ok" ? `hdm-audit-${auditoria.severidade}` : ""}`}
+                    data-severity={auditoria.severidade || "ok"}
                     title={auditoria.detalhes?.length ? auditoria.detalhes.join("\n") : undefined}
                   >
                     {auditoria.memoria ? (
@@ -2391,48 +3189,72 @@ export function HistoricoDayModal({
                         <button
                           type="button"
                           className="hdm-audit-chip-main"
-                          onClick={() =>
-                            setAuditMemoria({
-                              ...auditoria.memoria,
-                              reviewKey,
-                              review,
-                              colaborador: ev.nome || "",
-                              matricula: ev.mat || "",
-                              departamento: ev.depto || ev.departamento || "",
-                              data: fmtDate(eventDateKey(ev)),
-                            })
-                          }
+                          onClick={openAuditMemoria}
                         >
-                          <span>{auditoria.severidade}</span>
+                          <span className={`hdm-audit-severity-badge hdm-audit-severity-${auditoria.severidade || "ok"}`}>
+                            {auditoria.severidade === "critica"
+                              ? "Critica"
+                              : auditoria.severidade === "alta"
+                                ? "Alta"
+                                : auditoria.severidade === "media"
+                                  ? "Media"
+                                  : auditoria.severidade === "baixa"
+                                    ? "Baixa"
+                                    : "OK"}
+                          </span>
                           <span className={`hdm-audit-review-badge hdm-audit-review-${review.status}`}>
                             {AUDIT_REVIEW_LABELS[review.status] || review.status}
                           </span>
                           <span className="hdm-audit-message">{obs}</span>
                         </button>
-                        <span className="hdm-audit-quick-actions" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            onClick={() => updateAuditReview(reviewKey, { status: "revisado" })}
-                            title="Marcar como revisado"
-                          >
-                            Revisar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateAuditReview(reviewKey, { status: "justificado" })}
-                            title="Marcar como justificado"
-                          >
-                            Justificar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateAuditReview(reviewKey, { status: "ajuste" })}
-                            title="Marcar para corrigir folha"
-                          >
-                            Corrigir
-                          </button>
-                        </span>
+                        <details className="hdm-audit-actions-menu" onClick={(e) => e.stopPropagation()}>
+                          <summary>Ações</summary>
+                          <div className="hdm-audit-actions-pop">
+                            <button type="button" onClick={openAuditMemoria}>
+                              Memoria / explicacao
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateAuditReview(reviewKey, { status: "revisado" })}
+                            >
+                              Revisar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateAuditReview(reviewKey, { status: "justificado" })}
+                            >
+                              Justificar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateAuditReview(reviewKey, { status: "ajuste" })}
+                            >
+                              Corrigir
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateAuditReview(reviewKey, {
+                                  status: "sem_acao",
+                                  justificativa: getAuditReview(reviewKey).justificativa || "Evento marcado como sem ação.",
+                                })
+                              }
+                            >
+                              Sem ação
+                            </button>
+                          </div>
+                        </details>
                       </div>
+                    ) : auditoria.radarTrabalhista ? (
+                      <button
+                        type="button"
+                        className="hdm-audit-radar-link"
+                        onClick={() => openRadarFromAudit(ev, auditoria)}
+                        title="Abrir Radar Trabalhista"
+                      >
+                        <span className="hdm-audit-review-badge hdm-audit-review-sem_acao">RADAR</span>
+                        <span>Risco trabalhista. Consulte o Radar.</span>
+                      </button>
                     ) : (
                       obs || "-"
                     )}
@@ -2440,40 +3262,43 @@ export function HistoricoDayModal({
                 </tr>
               );
             })}
-            {remaining > 0 ? (
-              <tr className="hdm-collab-more-row">
-                <td colSpan={5}>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setCollabDetailLimits((prev) => {
-                        const next = new Map(prev);
-                        next.set(groupKey, visibleLimit + collabDetailStep);
-                        return next;
-                      })
-                    }
-                  >
-                    Ver mais {Math.min(collabDetailStep, remaining).toLocaleString("pt-BR")} de{" "}
-                    {remaining.toLocaleString("pt-BR")} eventos
-                  </button>
-                </td>
-              </tr>
-            ) : null}
           </React.Fragment>
         ) : null,
       ];
     });
-    if (hiddenGroups > 0) {
+    if (totalPages > 1) {
       rendered.push(
-        <tr key="__collab-groups-more" className="hdm-collab-more-row hdm-collab-group-more-row">
+        <tr key="__collab-groups-pagination" className="hdm-collab-more-row hdm-collab-group-more-row">
           <td colSpan={5}>
-            <button
-              type="button"
-              onClick={() => setCollabGroupLimit((limit) => limit + collabGroupStep)}
-            >
-              Ver mais {Math.min(collabGroupStep, hiddenGroups).toLocaleString("pt-BR")} de{" "}
-              {hiddenGroups.toLocaleString("pt-BR")} colaboradores restantes
-            </button>
+            <div className="hdm-collab-pagination">
+              <span>
+                Colaboradores {firstVisibleGroup.toLocaleString("pt-BR")}-{lastVisibleGroup.toLocaleString("pt-BR")} de{" "}
+                {totalGroupCount.toLocaleString("pt-BR")}
+              </span>
+              <button type="button" disabled={boundedPage <= 1} onClick={() => setCollabGroupPage(1)}>
+                Primeiro
+              </button>
+              <button
+                type="button"
+                disabled={boundedPage <= 1}
+                onClick={() => setCollabGroupPage((page) => Math.max(1, page - 1))}
+              >
+                Anterior
+              </button>
+              <strong>
+                Pagina {boundedPage.toLocaleString("pt-BR")} / {totalPages.toLocaleString("pt-BR")}
+              </strong>
+              <button
+                type="button"
+                disabled={boundedPage >= totalPages}
+                onClick={() => setCollabGroupPage((page) => Math.min(totalPages, page + 1))}
+              >
+                Proxima
+              </button>
+              <button type="button" disabled={boundedPage >= totalPages} onClick={() => setCollabGroupPage(totalPages)}>
+                Ultima
+              </button>
+            </div>
           </td>
         </tr>,
       );
@@ -3374,7 +4199,7 @@ export function HistoricoDayModal({
         const audit = getEventAudit(ev, ordered[idx - 1], britanicoMap);
         if (!audit.memoria || audit.severidade === "ok") return;
         const reviewKey = makeAuditReviewKey(ev, audit);
-        const review = getAuditReview(reviewKey);
+        const review = getAuditDisplayReview(audit, getAuditReview(reviewKey));
         const historyText = (Array.isArray(review.history) ? review.history : [])
           .map((h) => {
             const when = h?.at ? new Date(h.at).toLocaleString("pt-BR") : "";
@@ -3746,10 +4571,74 @@ export function HistoricoDayModal({
           height: size.h,
         };
 
+  const auditSummaryBar = collaboratorDetailMode && collaboratorAuditSummary ? (
+    <div className="hdm-audit-summary-bar" aria-label="Resumo de severidade da auditoria">
+      <button
+        type="button"
+        className={`hdm-audit-summary-item hdm-audit-summary-item--total${auditSeverityFilter === "todos" ? " active" : ""}`}
+        onClick={() => setAuditSeverityFilter("todos")}
+      >
+        <span>Total</span>
+        <strong>{collaboratorAuditSummary.total.toLocaleString("pt-BR")}</strong>
+      </button>
+      <button
+        type="button"
+        className={`hdm-audit-summary-item hdm-audit-summary-item--critica${auditSeverityFilter === "critica" ? " active" : ""}`}
+        onClick={() => setAuditSeverityFilter("critica")}
+      >
+        <span>Criticas</span>
+        <strong>{collaboratorAuditSummary.critica.toLocaleString("pt-BR")}</strong>
+      </button>
+      <button
+        type="button"
+        className={`hdm-audit-summary-item hdm-audit-summary-item--alta${auditSeverityFilter === "alta" ? " active" : ""}`}
+        onClick={() => setAuditSeverityFilter("alta")}
+      >
+        <span>Altas</span>
+        <strong>{collaboratorAuditSummary.alta.toLocaleString("pt-BR")}</strong>
+      </button>
+      <button
+        type="button"
+        className={`hdm-audit-summary-item hdm-audit-summary-item--media${auditSeverityFilter === "media" ? " active" : ""}`}
+        onClick={() => setAuditSeverityFilter("media")}
+      >
+        <span>Medias</span>
+        <strong>{collaboratorAuditSummary.media.toLocaleString("pt-BR")}</strong>
+      </button>
+      <button
+        type="button"
+        className={`hdm-audit-summary-item hdm-audit-summary-item--baixa${auditSeverityFilter === "baixa" ? " active" : ""}`}
+        onClick={() => setAuditSeverityFilter("baixa")}
+      >
+        <span>Baixas</span>
+        <strong>{collaboratorAuditSummary.baixa.toLocaleString("pt-BR")}</strong>
+      </button>
+      <button
+        type="button"
+        className={`hdm-audit-summary-item hdm-audit-summary-item--ok${auditSeverityFilter === "ok" ? " active" : ""}`}
+        onClick={() => setAuditSeverityFilter("ok")}
+      >
+        <span>OK</span>
+        <strong>{collaboratorAuditSummary.ok.toLocaleString("pt-BR")}</strong>
+      </button>
+    </div>
+  ) : null;
+
+  const auditExplanation = auditMemoria
+    ? buildAuditExplanation(auditMemoria, auditQuestion)
+    : null;
+  const auditMemoryPrevParts = auditMemoria ? auditMemoria.horarioPlanejado || [] : [];
+  const auditMemoryRealParts = auditMemoria ? auditMemoria.marcacoes || [] : [];
+  const auditMemoryMarkSlots = auditMemoria
+    ? buildMarkDisplaySlots(auditMemoryPrevParts, auditMemoryRealParts)
+    : [];
+  const auditMemoryHasRealMarks = auditMemoryRealParts.length > 0;
+  const auditMemoryUsedParamKeys = auditMemoria ? auditUsedParamKeys(auditMemoria) : [];
+
   const shell = (
     <>
       <div
-        className={`${embedded ? "hdm-embedded" : "hdm-overlay"}${auditWorkspaceMode ? " hdm-audit-workspace-mode" : ""}`}
+        className={`${embedded ? "hdm-embedded" : "hdm-overlay"}${auditWorkspaceMode ? " hdm-audit-workspace-mode" : ""}${auditGridFocus ? " hdm-audit-grid-focus" : ""}`}
         data-theme={theme}
         data-pos-list={embedded ? String(posListKey || "") : undefined}
         translate="no"
@@ -3795,8 +4684,10 @@ export function HistoricoDayModal({
           ) : null}
 
           {/* Pills — eventos mode: filtro rápido por categoria (oculto no modal posição do dia) */}
+          {auditWorkspaceMode ? auditSummaryBar : null}
+
           {isEventsMode && !isPosEmbedded && (
-            <div className="hdm-pills-row">
+            <div className={`hdm-pills-row${auditWorkspaceMode ? " hdm-pills-row--audit" : ""}`}>
               <button
                 type="button"
                 className={`hdm-pill hdm-pill-all${pillFilter ? "" : " active"}`}
@@ -3935,14 +4826,14 @@ export function HistoricoDayModal({
               </button>
             )}
 
-            {collaboratorDetailMode && (
+            {collaboratorDetailMode && !auditWorkspaceMode && (
               <button
                 type="button"
                 className="hdm-tool-btn"
                 onClick={() => setAuditParamsOpen(true)}
                 title="Editar parametros usados na auditoria de ponto"
               >
-                Parametros auditoria
+                  Parâmetros auditoria
               </button>
             )}
 
@@ -3962,6 +4853,17 @@ export function HistoricoDayModal({
               </select>
             )}
 
+            {collaboratorDetailMode && (
+              <button
+                type="button"
+                className={`hdm-tool-btn hdm-audit-actionable-toggle${auditCriticalPendingOnly ? " active" : ""}`}
+                onClick={() => setAuditCriticalPendingOnly((value) => !value)}
+                title="Mostrar somente críticas e altas ainda pendentes de decisão"
+              >
+                Pendentes de decisão
+              </button>
+            )}
+
             {collaboratorDetailMode && !auditWorkspaceMode && auditReviewSummary.total > 0 && (
               <div className="hdm-audit-review-summary" title="Resumo operacional da auditoria no filtro atual">
                 <span>Crit. pend. {auditReviewSummary.criticaPendente || 0}</span>
@@ -3971,7 +4873,7 @@ export function HistoricoDayModal({
               </div>
             )}
 
-            <div className="hdm-col-wrap" ref={colSelRef}>
+            <div className={`hdm-col-wrap${auditWorkspaceMode ? " hdm-audit-secondary-control" : ""}`} ref={colSelRef}>
               <button
                 type="button"
                 className={`hdm-tool-btn${colSelOpen ? " active" : ""}`}
@@ -4053,7 +4955,7 @@ export function HistoricoDayModal({
               )}
             </div>
 
-            {isEventsMode && (
+            {isEventsMode && !auditWorkspaceMode && (
               <button
                 type="button"
                 className={`hdm-tool-btn${stackHrsMrc ? " active" : ""}`}
@@ -4076,6 +4978,33 @@ export function HistoricoDayModal({
                 title="Agrupar eventos por colaborador"
               >
                 👤 Colaborador
+              </button>
+            )}
+
+            {auditWorkspaceMode && (
+              <details className="hdm-audit-adjustments">
+                <summary>Ajustes</summary>
+                <div className="hdm-audit-adjustments-pop">
+                  <button
+                    type="button"
+                    className="hdm-tool-btn"
+                    onClick={() => setAuditParamsOpen(true)}
+                    title="Editar parâmetros usados na auditoria de ponto"
+                  >
+                    Parâmetros auditoria
+                  </button>
+                </div>
+              </details>
+            )}
+
+            {auditWorkspaceMode && (
+              <button
+                type="button"
+                className={`hdm-tool-btn hdm-audit-focus-btn${auditGridFocus ? " active" : ""}`}
+                onClick={() => setAuditGridFocus((value) => !value)}
+                title="Alternar modo foco: amplia a area dos colaboradores"
+              >
+                Foco
               </button>
             )}
 
@@ -4134,8 +5063,13 @@ export function HistoricoDayModal({
             </div>
 
             {!isSheetImportEmbedded ? (
-              <span className="hdm-count">
-                {filteredCount} / {totalRows}
+              <span className="hdm-count hdm-count--audit">
+                <span>{filteredCount} / {totalRows}</span>
+                {hasAnyFilter ? (
+                  <span className="hdm-filter-inline-note">
+                    Filtros ativos · {Math.max(0, totalRows - filteredCount).toLocaleString("pt-BR")} ocultos
+                  </span>
+                ) : null}
               </span>
             ) : null}
           </div>
@@ -4204,26 +5138,7 @@ export function HistoricoDayModal({
             </div>
           )}
 
-          {collaboratorDetailMode && collaboratorAuditSummary ? (
-            <div className="hdm-audit-summary-bar">
-              <span>Total {collaboratorAuditSummary.total.toLocaleString("pt-BR")}</span>
-              <button type="button" onClick={() => setAuditSeverityFilter("critica")}>
-                Criticas {collaboratorAuditSummary.critica.toLocaleString("pt-BR")}
-              </button>
-              <button type="button" onClick={() => setAuditSeverityFilter("alta")}>
-                Altas {collaboratorAuditSummary.alta.toLocaleString("pt-BR")}
-              </button>
-              <button type="button" onClick={() => setAuditSeverityFilter("media")}>
-                Medias {collaboratorAuditSummary.media.toLocaleString("pt-BR")}
-              </button>
-              <button type="button" onClick={() => setAuditSeverityFilter("baixa")}>
-                Baixas {collaboratorAuditSummary.baixa.toLocaleString("pt-BR")}
-              </button>
-              <button type="button" onClick={() => setAuditSeverityFilter("ok")}>
-                OK {collaboratorAuditSummary.ok.toLocaleString("pt-BR")}
-              </button>
-            </div>
-          ) : null}
+          {!auditWorkspaceMode ? auditSummaryBar : null}
 
           {/* Ranking panel */}
           {isEventsMode && rankOpen && rankings && (
@@ -4315,15 +5230,22 @@ export function HistoricoDayModal({
             )}
             <table
               className={`hdm-table${collaboratorDetailMode ? " hdm-collab-detail-table" : ""}${auditWorkspaceMode ? " hdm-audit-workspace-table" : ""}`}
-              style={collaboratorDetailMode ? { minWidth: 1380 } : { width: modalTableWidth, minWidth: "100%" }}
+              style={collaboratorDetailMode ? {
+                minWidth: Math.max(auditWorkspaceMode ? 1500 : 1380, collabTableMinWidth),
+                "--hdm-col-data": `${collabColWidths.data}px`,
+                "--hdm-col-evento": `${collabColWidths.evento}px`,
+                "--hdm-col-horas": `${collabColWidths.horas}px`,
+                "--hdm-col-horario": `${collabColWidths.horario}px`,
+                "--hdm-col-auditoria": `${collabColWidths.auditoria}px`,
+              } : { width: modalTableWidth, minWidth: "100%" }}
             >
               {collaboratorDetailMode ? (
                 <colgroup>
-                  <col style={{ width: 150 }} />
-                  <col style={{ width: auditWorkspaceMode ? 560 : 610 }} />
-                  <col style={{ width: 100 }} />
-                  <col style={{ width: auditWorkspaceMode ? 340 : 360 }} />
-                  <col style={{ width: auditWorkspaceMode ? 340 : 250 }} />
+                  <col style={{ width: collabColWidths.data }} />
+                  <col style={{ width: collabColWidths.evento }} />
+                  <col style={{ width: collabColWidths.horas }} />
+                  <col style={{ width: collabColWidths.horario }} />
+                  <col style={{ width: collabColWidths.auditoria }} />
                 </colgroup>
               ) : (
                 <colgroup>
@@ -4485,18 +5407,13 @@ export function HistoricoDayModal({
           {/* Footer */}
           {!isSheetImportEmbedded ? (
           <div className="hdm-footer">
-            {hasAnyFilter && (
+            {hasAnyFilter && !auditWorkspaceMode && (
               <span className="hdm-filter-badge">
                 Filtros ativos · {totalRows - filteredCount} oculto
                 {totalRows - filteredCount !== 1 ? "s" : ""}
               </span>
             )}
             <div style={{ flex: 1 }} />
-            {isEventsMode && !isApiMode && !isSheetImportEmbedded && (
-              <span className="hdm-count" style={{ fontSize: 12 }}>
-                {filteredEvents.length} evento{filteredEvents.length !== 1 ? "s" : ""}
-              </span>
-            )}
             {isApiMode && !apiData.useGroupList && (
               <div className="hdm-pager">
                 <button
@@ -4539,25 +5456,115 @@ export function HistoricoDayModal({
       )}
       {auditMemoria && (
         <div className="hdm-audit-modal" data-theme={theme} role="dialog" aria-modal="true">
-          <div className="hdm-audit-card">
+          <div className="hdm-audit-card hdm-audit-explain-card">
             <div className="hdm-audit-head">
               <div>
                 <strong>Memória de cálculo</strong>
                 <span>{auditMemoria.titulo}</span>
               </div>
-              <button type="button" className="hdm-close" onClick={() => setAuditMemoria(null)}>
+              <button
+                type="button"
+                className="hdm-close"
+                onClick={() => {
+                  setAuditMemoria(null);
+                  setAuditQuestion("resumo");
+                }}
+              >
                 ×
               </button>
             </div>
             <div className="hdm-audit-body">
+              <section className="hdm-audit-explain-hero">
+                <span className="hdm-audit-explain-kicker">Resposta da memoria</span>
+                <h4>{auditExplanation?.title || "Resumo explicado"}</h4>
+                <p>{auditExplanation?.answer}</p>
+                {auditExplanation?.bullets?.length ? (
+                  <ul>
+                    {auditExplanation.bullets.map((item, index) => (
+                      <li key={`${item}-${index}`}>{item}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </section>
+
+              <section className="hdm-audit-ask-box">
+                <h4>Perguntar sobre esta auditoria</h4>
+                <div className="hdm-audit-question-pills">
+                  {AUDIT_EXPLAIN_QUICK_QUESTIONS.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={inferAuditQuestionType(auditQuestion) === item.id ? "active" : ""}
+                      onClick={() => setAuditQuestion(item.id)}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={AUDIT_EXPLAIN_QUICK_QUESTIONS.some((item) => item.id === auditQuestion) ? "" : auditQuestion}
+                  onChange={(e) => setAuditQuestion(e.target.value)}
+                  placeholder="Ex.: qual limite foi usado? por que virou critica?"
+                />
+              </section>
+
               <p className="hdm-audit-summary">{auditMemoria.resumo}</p>
-              <dl className="hdm-audit-dl">
-                <div><dt>Evento</dt><dd>{auditMemoria.evento || "-"}</dd></div>
-                <div><dt>Horario planejado</dt><dd>{auditMemoria.horarioPlanejado?.join(" ") || "-"}</dd></div>
-                <div><dt>Marcacoes</dt><dd>{auditMemoria.marcacoes?.join(" ") || "-"}</dd></div>
-                <div><dt>Horas evento</dt><dd>{auditMemoria.horasEvento || "-"}</dd></div>
-                <div><dt>Horas marcacoes</dt><dd>{auditMemoria.horasMarcacoes || "-"}</dd></div>
-              </dl>
+              <section className="hdm-audit-marks-card">
+                <div className="hdm-audit-marks-head">
+                  <div>
+                    <span>Evento</span>
+                    <strong>{auditMemoria.evento || "-"}</strong>
+                  </div>
+                  <div>
+                    <span>Horas evento</span>
+                    <strong>{auditMemoria.horasEvento || "-"}</strong>
+                  </div>
+                  <div>
+                    <span>Horas marcacoes</span>
+                    <strong>{auditMemoria.horasMarcacoes || "-"}</strong>
+                  </div>
+                </div>
+                <div className="hdm-audit-marks-stack" style={{ "--mark-slots": Math.max(1, auditMemoryMarkSlots.length) }}>
+                  <div className="hdm-collab-mark-line">
+                    <span className="hdm-collab-mark-label">Prev:</span>
+                    <span className="hdm-collab-mark-values">
+                      {auditMemoryMarkSlots.map((slot, partIdx) => (
+                        <span key={`audit-prev-${partIdx}`} className="hdm-collab-time-slot">
+                          {slot.prev || ""}
+                        </span>
+                      ))}
+                    </span>
+                  </div>
+                  {auditMemoryHasRealMarks ? (
+                    <>
+                      <div className="hdm-collab-mark-line hdm-collab-marcacao">
+                        <span className="hdm-collab-mark-label">Real:</span>
+                        <span className="hdm-collab-mark-values">
+                          {auditMemoryMarkSlots.map((slot, partIdx) => (
+                            <span key={`audit-real-${partIdx}`} className={`hdm-collab-time-slot ${slot.real ? "is-real" : ""}`}>
+                              {slot.real || ""}
+                            </span>
+                          ))}
+                        </span>
+                      </div>
+                      <div className="hdm-collab-mark-line hdm-collab-diff">
+                        <span className="hdm-collab-mark-label">Dif:</span>
+                        <span className="hdm-collab-mark-values">
+                          {auditMemoryMarkSlots.map((slot, partIdx) => (
+                            <span
+                              key={`audit-dif-${partIdx}`}
+                              className={`hdm-collab-time-slot hdm-diff-slot hdm-diff-${slot.sign}${slot.severe ? " is-severe" : ""}`}
+                            >
+                              {slot.diffText}
+                            </span>
+                          ))}
+                        </span>
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              </section>
               <h4>Regras acionadas</h4>
               <ul className="hdm-audit-list">
                 {auditMemoria.anomalias?.map((item) => (
@@ -4591,20 +5598,19 @@ export function HistoricoDayModal({
               </dl>
               <h4>Parametros usados</h4>
               <dl className="hdm-audit-dl">
-                <div><dt>Tolerancia</dt><dd>{auditMemoria.parametros?.toleranciaMinutos} min</dd></div>
-                <div><dt>Duplicidade</dt><dd>{auditMemoria.parametros?.toleranciaDuplicidadeMinutos} min</dd></div>
-                <div><dt>Pareamento</dt><dd>{auditMemoria.parametros?.janelaPareamentoMaxMinutos} min</dd></div>
-                <div><dt>Intrajornada</dt><dd>{auditMemoria.parametros?.intervaloIntrajornadaMinutos} min</dd></div>
-                <div><dt>Jornada intervalo</dt><dd>{auditMemoria.parametros?.jornadaIntrajornadaMinutos} min</dd></div>
-                <div><dt>Interjornada</dt><dd>{auditMemoria.parametros?.intervaloInterjornadaMinutos} min</dd></div>
-                <div><dt>Ponto britanico</dt><dd>{auditMemoria.parametros?.pontoBritanicoDias} dias</dd></div>
-                <div><dt>Min. residuais</dt><dd>{auditMemoria.parametros?.minutosResiduaisMinutos} min</dd></div>
-                <div><dt>Limite extra</dt><dd>{auditMemoria.parametros?.limiteHoraExtraDiariaMinutos} min</dd></div>
-                <div><dt>Intervalo max.</dt><dd>{auditMemoria.parametros?.intervaloIntrajornadaMaxMinutos} min</dd></div>
-                <div><dt>Dias seguidos</dt><dd>{auditMemoria.parametros?.diasConsecutivosLimite} dias</dd></div>
-                <div><dt>Banco +</dt><dd>{auditMemoria.parametros?.limiteBancoHorasPositivoMinutos} min</dd></div>
-                <div><dt>Banco -</dt><dd>{auditMemoria.parametros?.limiteBancoHorasNegativoMinutos} min</dd></div>
-                <div><dt>Recorrencia</dt><dd>{auditMemoria.parametros?.recorrenciaRiscoLimite} ocorr.</dd></div>
+                {auditMemoryUsedParamKeys.length ? (
+                  auditMemoryUsedParamKeys.map((key) => (
+                    <div key={key}>
+                      <dt>{auditParamLabel(key)}</dt>
+                      <dd>{auditParamValue(key, auditMemoria.parametros?.[key])}</dd>
+                    </div>
+                  ))
+                ) : (
+                  <div>
+                    <dt>Parametro</dt>
+                    <dd>Esta regra nao registrou parametro especifico na memoria.</dd>
+                  </div>
+                )}
               </dl>
               {auditMemoria.reviewKey ? (
                 <section className="hdm-audit-review-box">
@@ -4685,10 +5691,27 @@ export function HistoricoDayModal({
           </div>
         </div>
       )}
-      {auditParamsOpen && (
+      <AuditoriaPontoParamsPanel
+        open={auditParamsOpen}
+        value={auditParams}
+        onChange={(next) => setAuditParams(normalizeAuditoriaParamsConfig(next))}
+        onClose={() => setAuditParamsOpen(false)}
+        onSave={() => setAuditParamsOpen(false)}
+        onReset={() => setAuditParams(normalizeAuditoriaParamsConfig(DEFAULT_AUDITORIA_PONTO_PARAMS))}
+      />
+      {false && auditParamsOpen && (
         <div className="hdm-audit-modal" data-theme={theme} role="dialog" aria-modal="true">
-          <div className="hdm-audit-card hdm-audit-param-card">
-            <div className="hdm-audit-head">
+          <div
+            className="hdm-audit-card hdm-audit-param-card hdm-audit-param-card--floating"
+            style={{
+              left: `calc(50% + ${auditParamsPos.x}px)`,
+              top: `calc(50% + ${auditParamsPos.y}px)`,
+              width: auditParamsSize.w,
+              height: auditParamsSize.h,
+              transform: "translate(-50%, -50%)",
+            }}
+          >
+            <div className="hdm-audit-head hdm-audit-head--draggable" onMouseDown={onAuditParamsDragStart}>
               <div>
                 <strong>Parâmetros de auditoria</strong>
                 <span>Ajuste conforme CCT, escala ou politica interna.</span>
@@ -4751,6 +5774,89 @@ export function HistoricoDayModal({
                       setAuditParams((prev) => ({
                         ...prev,
                         eventosSemMarcacaoOk: e.target.value
+                          .split(/\r?\n/)
+                          .map((item) => item.trim())
+                          .filter(Boolean),
+                      }))
+                    }
+                  />
+                </label>
+              </section>
+              <section className="hdm-audit-ignore-section hdm-audit-rule-treatment-section">
+                <div className="hdm-audit-ignore-head">
+                  <div>
+                    <strong>Tratamento das regras</strong>
+                    <span>
+                      Defina se a regra gera pendencia de decisao ou se aparece apenas como informacao auditavel.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="hdm-audit-secondary"
+                    onClick={() =>
+                      setAuditParams((prev) => ({
+                        ...prev,
+                        tratamentoRegras: {},
+                      }))
+                    }
+                  >
+                    Restaurar regras
+                  </button>
+                </div>
+                <div className="hdm-audit-rule-treatment-list">
+                  {REGRAS_AUDITORIA_PONTO_META.map((rule) => {
+                    const value = auditParams.tratamentoRegras?.[rule.id] || "acao";
+                    return (
+                      <div className="hdm-audit-rule-treatment-row" key={rule.id}>
+                        <div>
+                          <strong>{rule.titulo}</strong>
+                          <span>{rule.categoria} · {rule.id}</span>
+                        </div>
+                        <select
+                          value={value}
+                          onChange={(e) =>
+                            setAuditParams((prev) => ({
+                              ...prev,
+                              tratamentoRegras: {
+                                ...(prev.tratamentoRegras || {}),
+                                [rule.id]: e.target.value,
+                              },
+                            }))
+                          }
+                        >
+                          {AUDIT_RULE_TREATMENTS.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+              <section className="hdm-audit-ignore-section">
+                <div className="hdm-audit-ignore-head">
+                  <div>
+                    <strong>Eventos de jornada principal</strong>
+                    <span>
+                      Use um termo por linha. As regras de marcacao e jornada rodam somente quando o evento
+                      contiver um desses termos.
+                    </span>
+                  </div>
+                </div>
+                <label className="hdm-audit-textarea-label">
+                  <span>Termos do cliente</span>
+                  <textarea
+                    value={(Array.isArray(auditParams.eventosJornadaPrincipal)
+                      ? auditParams.eventosJornadaPrincipal
+                      : DEFAULT_AUDITORIA_PONTO_EVENTOS_JORNADA_PRINCIPAL
+                    ).join("\n")}
+                    placeholder={"Ex.:\nHORAS NORMAIS\nJORNADA NORMAL\nPRESENCA"}
+                    onChange={(e) =>
+                      setAuditParams((prev) => ({
+                        ...prev,
+                        eventosJornadaPrincipal: e.target.value
                           .split(/\r?\n/)
                           .map((item) => item.trim())
                           .filter(Boolean),
@@ -4875,8 +5981,10 @@ export function HistoricoDayModal({
                   onClick={() =>
                     setAuditParams({
                       ...DEFAULT_AUDITORIA_PONTO_PARAMS,
+                      tratamentoRegras: {},
                       eventosIgnoradosAuditoria: DEFAULT_AUDITORIA_PONTO_EVENTOS_IGNORADOS,
                       eventosSemMarcacaoOk: DEFAULT_AUDITORIA_PONTO_EVENTOS_SEM_MARCACAO_OK,
+                      eventosJornadaPrincipal: DEFAULT_AUDITORIA_PONTO_EVENTOS_JORNADA_PRINCIPAL,
                     })
                   }
                 >
@@ -4887,6 +5995,7 @@ export function HistoricoDayModal({
                 </button>
               </div>
             </div>
+            <div className="hdm-audit-param-resize" onMouseDown={onAuditParamsResizeStart} />
           </div>
         </div>
       )}
@@ -4913,6 +6022,8 @@ export function HistoricoDayModal({
               <span className="hdm-fp-title">
                 {filterPop.col === "nome"
                   ? "Colaborador"
+                  : filterPop.col === "auditoria"
+                    ? "Regra acionada"
                   : COLS.find((c) => c.id === filterPop.col)?.label}
               </span>
               <button

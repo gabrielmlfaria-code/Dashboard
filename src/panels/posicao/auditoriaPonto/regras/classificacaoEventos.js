@@ -45,9 +45,9 @@ export function isEventoAusenciaIntegralText(value) {
   return isEventoAusenciaOuAfastamento(value) || AUSENCIA_TERMS.some((term) => text.includes(getEventoAuditText(term)));
 }
 
-export function isEventoPresencaText(value) {
+export function isEventoPresencaText(value, params = {}) {
   const text = textFromEvent(value);
-  return isEventoPresenca(value) || PRESENCA_TERMS.some((term) => text.includes(getEventoAuditText(term)));
+  return isEventoPresenca(value, params) || PRESENCA_TERMS.some((term) => text.includes(getEventoAuditText(term)));
 }
 
 export function isEventoRemuneradoText(value) {

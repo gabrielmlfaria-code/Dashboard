@@ -12,6 +12,7 @@ function hasProrrogacaoNoturna(ctx) {
 
 export function regraAdicionalNoturnoProrrogacaoNaoClassificada(ctx) {
   if (!ctx.isEventoTrabalhado) return null;
+  if (!ctx.isEventoPresencaPrincipal) return null;
   if (!hasProrrogacaoNoturna(ctx)) return null;
   if (ctx.eventText.includes("noturn") || ctx.eventText.includes("prorrog")) return null;
 

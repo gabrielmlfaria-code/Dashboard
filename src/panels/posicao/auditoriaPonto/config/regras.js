@@ -92,7 +92,7 @@ const REGRA_TITULOS = {
   PAREAMENTO_AMBIGUO: "Pareamento ambiguo",
   INTERVALO_ATIPICO_MARCACOES: "Intervalo atipico entre marcacoes",
   SOBREPOSICAO_EVENTOS: "Sobreposicao de eventos",
-  INTRAJORNADA_INSUFICIENTE: "Intervalo intrajornada insuficiente",
+  INTRAJORNADA_INSUFICIENTE: "Intervalo de refeicao insuficiente",
   INTERJORNADA_INSUFICIENTE: "Intervalo interjornada insuficiente",
   TROCA_TURNO_SEM_DESCANSO: "Troca de turno sem descanso",
   JORNADA_SEM_INTERVALO: "Jornada sem intervalo",

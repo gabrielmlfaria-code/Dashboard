@@ -11974,7 +11974,7 @@
 }
 
 .pb-radar-evol-overlay {
-  z-index: 12050;
+  z-index: 2147483800;
 }
 .pb-radar-evol-modal {
   width: min(640px, calc(100vw - 32px));
@@ -13452,7 +13452,7 @@
 
 /* Modal KPI — layout premium (gráfico + sidebar) */
 .pb-radar-evol-overlay--premium {
-  z-index: 12060;
+  z-index: 2147483800;
 }
 .pb-radar-evol-modal--premium {
   position: relative;
@@ -17000,7 +17000,7 @@
 .pb-audit-params-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 10020;
+  z-index: 2147483700;
   padding: 24px;
   background: rgba(15, 23, 42, 0.38);
 }

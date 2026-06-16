@@ -4,7 +4,9 @@ import { isEventoExtraOuCompensado } from "./classificacaoFinanceira.js";
 
 export function regraEntradaAntesEscalaSemExtra(ctx) {
   if (!ctx.isEventoTrabalhado) return null;
+  if (!ctx.isEventoPresencaPrincipal) return null;
   if (isEventoExtraOuCompensado(ctx.eventText)) return null;
+  if ((ctx.sameDayEventTexts || []).some((text) => isEventoExtraOuCompensado(text))) return null;
   if (ctx.planejados.length < 2 || ctx.marcacoes.length < 2) return null;
 
   const entradaPrevista = ctx.planejados.find((item, index) => index % 2 === 0);

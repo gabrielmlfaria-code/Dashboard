@@ -115,7 +115,9 @@ test("ignora risco trabalhista tratado no radar", () => {
   assert.equal(r.status, "ignorado");
   assert.equal(r.severidade, "ok");
   assert.equal(r.ignoradoAuditoria, true);
+  assert.equal(r.radarTrabalhista, true);
   assert.equal(r.regraIgnoradaAuditoria, "RISCO_TRABALHISTA_RADAR");
+  assert.match(r.observacao, /Radar/);
   assert.equal(hasCode(r, "EVENTO_SEM_MARCACAO"), false);
 });
 
@@ -128,6 +130,97 @@ test("detecta divergencia entre horas do evento e marcacoes", () => {
   });
   assert.equal(r.codigo, "DIVERGENCIA_HORAS_EVENTO");
   assert.equal(r.severidade, "alta");
+});
+
+test("nao compara evento de hora extra com total de marcacoes do dia", () => {
+  const r = analisarAnomaliasPonto({
+    horario: "06:00 11:00 12:00 16:00",
+    marcacao: "05:24 11:00 12:00 17:19",
+    horas: 115,
+    evento: "123 - EVENTO DE HORA EXTRAS",
+  });
+  assert.equal(hasCode(r, "DIVERGENCIA_HORAS_EVENTO"), false);
+});
+
+test("nao acusa saida apos escala quando ha evento de extra no mesmo dia", () => {
+  const r = analisarAnomaliasPonto({
+    horario: "06:00 11:00 12:00 16:00",
+    marcacao: "05:24 11:00 12:00 17:19",
+    horas: 540,
+    evento: "2 - HORAS NORMAIS",
+    sameDayEvents: [
+      { cod: "2", evento: "HORAS NORMAIS" },
+      { cod: "123", evento: "EVENTO DE HORA EXTRAS" },
+    ],
+  });
+  assert.equal(hasCode(r, "SAIDA_APOS_ESCALA_SEM_EXTRA"), false);
+});
+
+test("nao acusa divergencia de horas normais quando extra explica marcacoes excedentes", () => {
+  const r = analisarAnomaliasPonto({
+    horario: "06:00 11:00 12:00 16:00",
+    marcacao: "05:24 11:00 12:00 17:19",
+    horas: 540,
+    evento: "2 - HORAS NORMAIS",
+    sameDayEvents: [
+      { cod: "2", evento: "HORAS NORMAIS" },
+      { cod: "123", evento: "EVENTO DE HORA EXTRAS" },
+    ],
+  });
+  assert.equal(hasCode(r, "DIVERGENCIA_HORAS_EVENTO"), false);
+});
+
+test("nao acusa desvio planejado quando extra no dia explica entrada antecipada", () => {
+  const r = analisarAnomaliasPonto({
+    horario: "06:00 11:00 12:00 16:00",
+    marcacao: "05:24 11:00 12:00 17:19",
+    horas: 540,
+    evento: "2 - HORAS NORMAIS",
+    sameDayEvents: [
+      { cod: "2", evento: "HORAS NORMAIS" },
+      { cod: "123", evento: "EVENTO DE HORA EXTRAS" },
+    ],
+  });
+  assert.equal(hasCode(r, "DESVIO_PLANEJADO"), false);
+});
+
+test("nao acusa marcacao excedente quando extra no dia explica saida prolongada", () => {
+  const r = analisarAnomaliasPonto({
+    horario: "06:00 11:00 12:00 16:00",
+    marcacao: "05:59 11:00 12:00 19:42",
+    horas: 540,
+    evento: "2 - HORAS NORMAIS",
+    sameDayEvents: [
+      { cod: "2", evento: "HORAS NORMAIS" },
+      { cod: "123", evento: "EVENTO DE HORA EXTRAS" },
+    ],
+  });
+  assert.equal(hasCode(r, "MARCACAO_EXCEDENTE"), false);
+});
+
+test("usa nomenclatura parametrizada do cliente para jornada principal", () => {
+  const r = analisarAnomaliasPonto(
+    {
+      horario: "08:00 12:00 13:00 17:00",
+      marcacao: "08:00 12:00 13:00 16:00",
+      horas: 480,
+      evento: "TRABALHO DIURNO CLIENTE",
+    },
+    { eventosJornadaPrincipal: ["TRABALHO DIURNO CLIENTE"] },
+  );
+  assert.equal(hasCode(r, "DIVERGENCIA_HORAS_EVENTO"), true);
+});
+
+test("nao aplica regras de jornada principal em totalizadores auxiliares", () => {
+  const r = analisarAnomaliasPonto({
+    horario: "06:00 11:00 12:00 16:00",
+    marcacao: "05:24 11:00 12:00 17:19",
+    horas: 655,
+    evento: "JT - TOTAL DE JORNADA",
+  });
+  assert.equal(hasCode(r, "DIVERGENCIA_HORAS_EVENTO"), false);
+  assert.equal(hasCode(r, "DESVIO_PLANEJADO"), false);
+  assert.equal(hasCode(r, "SAIDA_APOS_ESCALA_SEM_EXTRA"), false);
 });
 
 test("nao acusa ferias sem marcacao", () => {
@@ -196,6 +289,20 @@ test("detecta intrajornada insuficiente", () => {
   assert.equal(r.severidade, "critica");
 });
 
+test("nao duplica intrajornada quando apontamento ja registra evento de refeicao", () => {
+  const r = analisarAnomaliasPonto({
+    horario: "07:00 12:00 13:00 17:00",
+    marcacao: "07:02 12:31 13:29 17:10",
+    horas: 540,
+    evento: "2 - HORAS NORMAIS",
+    sameDayEvents: [
+      { evento: "2 - HORAS NORMAIS" },
+      { evento: "1H - INTERVALO MENOR QUE 1H" },
+    ],
+  });
+  assert.equal(hasCode(r, "INTRAJORNADA_INSUFICIENTE"), false);
+});
+
 test("detecta interjornada insuficiente", () => {
   const r = analisarAnomaliasPonto({
     data: "2026-06-02",
@@ -257,11 +364,21 @@ test("detecta marcacao fora de ordem", () => {
   assert.equal(hasCode(r, "MARCACAO_FORA_DE_ORDEM"), true);
 });
 
-test("detecta marcacao deslocada de dia", () => {
+test("nao acusa marcacao deslocada quando horario planejado tambem cruza meia-noite", () => {
   const r = analisarAnomaliasPonto({
     horario: "22:00 02:00 03:00 06:00",
     marcacao: "22:00 02:00 03:00 06:00",
     horas: 420,
+    evento: "HORAS NORMAIS",
+  });
+  assert.equal(hasCode(r, "MARCACAO_DESLOCADA_DE_DIA"), false);
+});
+
+test("detecta marcacao deslocada de dia quando somente marcacao cruza meia-noite", () => {
+  const r = analisarAnomaliasPonto({
+    horario: "08:00 12:00 13:00 17:00",
+    marcacao: "08:00 12:00 13:00 00:30",
+    horas: 480,
     evento: "HORAS NORMAIS",
   });
   assert.equal(hasCode(r, "MARCACAO_DESLOCADA_DE_DIA"), true);
@@ -375,10 +492,21 @@ test("detecta banco de horas incompativel com diferenca apurada", () => {
   assert.equal(hasCode(r, "BANCO_HORAS_INCOMPATIVEL"), true);
 });
 
-test("detecta domingo ou feriado sem classificacao especifica", () => {
+test("nao acusa domingo ou feriado quando existe escala planejada de horas normais", () => {
   const r = analisarAnomaliasPonto({
     data: "2026-06-07",
     horario: "08:00 12:00 13:00 17:00",
+    marcacao: "08:00 12:00 13:00 17:00",
+    horas: 480,
+    evento: "HORAS NORMAIS",
+  });
+  assert.equal(hasCode(r, "DOMINGO_FERIADO_SEM_CLASSIFICACAO"), false);
+});
+
+test("detecta domingo ou feriado trabalhado sem escala planejada e sem classificacao especifica", () => {
+  const r = analisarAnomaliasPonto({
+    data: "2026-06-07",
+    horario: "",
     marcacao: "08:00 12:00 13:00 17:00",
     horas: 480,
     evento: "HORAS NORMAIS",
@@ -408,6 +536,20 @@ test("detecta jornada sem intervalo registrado", () => {
   });
   assert.equal(r.codigo, "JORNADA_SEM_INTERVALO");
   assert.equal(r.severidade, "critica");
+});
+
+test("nao acusa jornada sem intervalo quando evento do mesmo dia ja registra sem refeicao", () => {
+  const r = analisarAnomaliasPonto({
+    horario: "18:00 23:00 00:10 06:10",
+    marcacao: "17:45 06:10",
+    horas: 660,
+    evento: "HORAS NORMAIS",
+    sameDayEvents: [
+      { evento: "6HSI - MAIS DE 6 HORAS SEM REFEICAO" },
+      { evento: "SIR - SEM INTERVALO DE REFEICAO" },
+    ],
+  });
+  assert.equal(hasCode(r, "JORNADA_SEM_INTERVALO"), false);
 });
 
 test("detecta intervalo intrajornada atipicamente longo", () => {
@@ -453,6 +595,39 @@ test("detecta duplicidade de evento remunerado no mesmo dia", () => {
     ],
   });
   assert.equal(hasCode(r, "DUPLICIDADE_EVENTO_REMUNERADO"), true);
+});
+
+test("nao acusa duplicidade quando horas normais coexistem com extra e totalizadores", () => {
+  const eventosDia = [
+    { evento: "123 - EVENTO DE HORA EXTRAS" },
+    { evento: "2 - HORAS NORMAIS" },
+    { evento: "10HS - JORNADA MAIOR QUE 10 HS" },
+    { evento: "JT - TOTAL DE JORNADA" },
+  ];
+  const r = analisarAnomaliasPonto({
+    horario: "06:00 11:00 12:00 16:00",
+    marcacao: "05:24 11:00 12:00 17:19",
+    horas: 540,
+    evento: "2 - HORAS NORMAIS",
+    eventosDia,
+  });
+  assert.equal(hasCode(r, "DUPLICIDADE_EVENTO_REMUNERADO"), false);
+});
+
+test("nao acusa duplicidade quando horas normais coexistem com evento de refeicao do apontamento", () => {
+  const eventosDia = [
+    { evento: "1045 - ATRASO REFEICAO" },
+    { evento: "2 - HORAS NORMAIS" },
+    { evento: "6HSI - MAIS DE 6 HORAS SEM REFEICAO" },
+  ];
+  const r = analisarAnomaliasPonto({
+    horario: "06:00 10:00 11:00 15:00",
+    marcacao: "06:04 12:14 13:26 15:01",
+    horas: 468,
+    evento: "2 - HORAS NORMAIS",
+    eventosDia,
+  });
+  assert.equal(hasCode(r, "DUPLICIDADE_EVENTO_REMUNERADO"), false);
 });
 
 test("detecta sobreposicao de eventos no mesmo dia", () => {

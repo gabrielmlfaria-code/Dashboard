@@ -39,6 +39,10 @@ import { RadarKpiModal } from "./RadarKpiModal.jsx";
 import { RadarHoursFace } from "./RadarHoursFace.jsx";
 import { ConsecFaltasModal } from "./ConsecFaltasModal.jsx";
 import { HistoricoDayModal } from "./HistoricoDayModal.jsx";
+import {
+  AuditoriaPontoParamsPanel as SharedAuditoriaPontoParamsPanel,
+  normalizeAuditoriaParamsConfig as normalizeSharedAuditoriaParamsConfig,
+} from "./AuditoriaPontoParamsPanel.jsx";
 import "./HistoricoDayModal.css";
 import { buildChartDayModalState, fetchChartDayEmployees } from "./chartDayModalUtil.js";
 import { CONFIG } from "../../configLocal.js";
@@ -78,6 +82,7 @@ import { DashboardNlAskPanel } from "./DashboardNlAskPanel.jsx";
 import { OperationalDiagnosisPanel } from "../../features/positionToday/intelligence/OperationalDiagnosisPanel.jsx";
 import { useDashboardApiData } from "../../hooks/useDashboardApiData.js";
 import { normalizeSaudeRegistro, resolveEmpresaLabel } from "./saudePreventivaCampanhas.js";
+import { parseXlsxToHistTabela as parseXlsxToHistTabelaShared } from "./importacao/parseXlsxToHistTabela.js";
 import { buildSaudeCalendarioLembretes } from "./saudePreventivaArt473.js";
 import { processSaudeCalendarioLembretes } from "./saudePreventivaLembretes.js";
 import { openNr1InNewTab } from "./nr1Open.js";
@@ -3977,6 +3982,7 @@ export function PosicaoBentoHeader({
   const [histMetricFilter, setHistMetricFilter] = useState(null);
   const [histTableViewRequest, setHistTableViewRequest] = useState(null);
   const [radarWorkspaceOpen, setRadarWorkspaceOpen] = useState(false);
+  const [radarWorkspaceRequest, setRadarWorkspaceRequest] = useState({ page: "visao", filter: null, seq: 0 });
   const [auditoriaWorkspaceOpen, setAuditoriaWorkspaceOpen] = useState(false);
   const [histPeriodLoading, setHistPeriodLoading] = useState(false);
   const histPeriodLoadingFrameRef = useRef(null);
@@ -4104,7 +4110,19 @@ export function PosicaoBentoHeader({
     setConsecFaltasOpen(true);
   }, []);
 
-  const openRadarWorkspace = useCallback(() => {
+  const openRadarWorkspace = useCallback((options = {}) => {
+    setRadarWorkspaceRequest((prev) => ({
+      page: options.page || prev.page || "visao",
+      filter: options.filter || null,
+      openPlaybook: Boolean(options.openPlaybook),
+      evento: options.evento || "",
+      eventoOriginal: options.eventoOriginal || "",
+      codigo: options.codigo || "",
+      data: options.data || "",
+      colaborador: options.colaborador || "",
+      matricula: options.matricula || "",
+      seq: (prev.seq || 0) + 1,
+    }));
     setAuditoriaWorkspaceOpen(false);
     setRadarWorkspaceOpen(true);
     setHistHighlightCol(null);
@@ -4398,10 +4416,10 @@ export function PosicaoBentoHeader({
   const [auditoriaPontoOpening, setAuditoriaPontoOpening] = useState(false);
   const [auditoriaParamsPanelOpen, setAuditoriaParamsPanelOpen] = useState(false);
   const [auditoriaParamsDraft, setAuditoriaParamsDraft] = useState(() =>
-    normalizeAuditoriaParamsConfig(readJsonStorage(PB_AUDITORIA_PARAMS_KEY, {})),
+    normalizeSharedAuditoriaParamsConfig(readJsonStorage(PB_AUDITORIA_PARAMS_KEY, {})),
   );
   const auditoriaPontoParams = useMemo(
-    () => normalizeAuditoriaParamsConfig(readJsonStorage(PB_AUDITORIA_PARAMS_KEY, {})),
+    () => normalizeSharedAuditoriaParamsConfig(readJsonStorage(PB_AUDITORIA_PARAMS_KEY, {})),
     [auditReviewTick],
   );
   const auditoriaPontoReviews = useMemo(
@@ -4438,11 +4456,11 @@ export function PosicaoBentoHeader({
     }, 30);
   }, [activeHistDateRange.from, activeHistDateRange.to, histPeriodAuditEvents]);
   const openAuditoriaPontoParams = useCallback(() => {
-    setAuditoriaParamsDraft(normalizeAuditoriaParamsConfig(readJsonStorage(PB_AUDITORIA_PARAMS_KEY, {})));
+    setAuditoriaParamsDraft(normalizeSharedAuditoriaParamsConfig(readJsonStorage(PB_AUDITORIA_PARAMS_KEY, {})));
     setAuditoriaParamsPanelOpen(true);
   }, []);
   const saveAuditoriaPontoParams = useCallback(() => {
-    const next = normalizeAuditoriaParamsConfig(auditoriaParamsDraft);
+    const next = normalizeSharedAuditoriaParamsConfig(auditoriaParamsDraft);
     try {
       if (typeof localStorage !== "undefined") {
         localStorage.setItem(PB_AUDITORIA_PARAMS_KEY, JSON.stringify(next));
@@ -4455,7 +4473,7 @@ export function PosicaoBentoHeader({
     setAuditReviewTick((tick) => tick + 1);
   }, [auditoriaParamsDraft]);
   const resetAuditoriaPontoParams = useCallback(() => {
-    setAuditoriaParamsDraft(normalizeAuditoriaParamsConfig(DEFAULT_AUDITORIA_PONTO_PARAMS));
+    setAuditoriaParamsDraft(normalizeSharedAuditoriaParamsConfig(DEFAULT_AUDITORIA_PONTO_PARAMS));
   }, []);
   const openMensalEventModal = useCallback(
     (row) => {
@@ -5652,6 +5670,27 @@ export function PosicaoBentoHeader({
     return () => window.removeEventListener("pb-open-radar-cct", onRadarCct);
   }, [openRadarToCct]);
 
+  useEffect(() => {
+    const onOpenRadar = (event) => {
+      const page = event?.detail?.page || "eventos";
+      const colaborador = event?.detail?.colaborador || "";
+      closeChartDayModal();
+      openRadarWorkspace({
+        page,
+        filter: colaborador ? { field: "colaborador", value: colaborador } : null,
+        openPlaybook: Boolean(event?.detail?.openPlaybook),
+        evento: event?.detail?.evento || "",
+        eventoOriginal: event?.detail?.eventoOriginal || "",
+        codigo: event?.detail?.codigo || "",
+        data: event?.detail?.data || "",
+        colaborador,
+        matricula: event?.detail?.matricula || "",
+      });
+    };
+    window.addEventListener("pb-open-radar", onOpenRadar);
+    return () => window.removeEventListener("pb-open-radar", onOpenRadar);
+  }, [closeChartDayModal, openRadarWorkspace]);
+
   const parseBancoHorasFromWorkbook = useCallback((wb, XLSX, fileName = "") => {
     if (!wb || !XLSX) return { parsed: null, diagnosis: null };
     let lastDiagnosis = null;
@@ -5688,7 +5727,7 @@ export function PosicaoBentoHeader({
           saveKpiBancoHoras(bancoHorasParsed);
           setStoredBancoHoras(bancoHorasParsed);
         }
-        const rows = parseXlsxToHistTabela(wb, XLSX);
+        const rows = parseXlsxToHistTabelaShared(wb, XLSX);
         if (!bancoHorasParsed && Array.isArray(rows) && rows.length) {
           const synthesizedRows = buildBancoHorasRowsFromHistEvents(rows);
           if (synthesizedRows.length) {
@@ -7949,10 +7988,10 @@ export function PosicaoBentoHeader({
         }}
       />
 
-      <AuditoriaPontoParamsPanel
+      <SharedAuditoriaPontoParamsPanel
         open={auditoriaParamsPanelOpen}
         value={auditoriaParamsDraft}
-        onChange={setAuditoriaParamsDraft}
+        onChange={(next) => setAuditoriaParamsDraft(normalizeSharedAuditoriaParamsConfig(next))}
         onClose={() => setAuditoriaParamsPanelOpen(false)}
         onSave={saveAuditoriaPontoParams}
         onReset={resetAuditoriaPontoParams}
@@ -7980,6 +8019,10 @@ export function PosicaoBentoHeader({
           hasHours={histHasHours}
           hasExtras={histRows.some((r) => r.horas_extras != null || r.extras != null)}
           onClose={closeChartDayModal}
+          onOpenRadar={(detail) => {
+            closeChartDayModal();
+            openRadarWorkspace(detail);
+          }}
           theme={theme}
         />
       )}
@@ -8020,6 +8063,7 @@ export function PosicaoBentoHeader({
                   customPeriod={Boolean(histDateFrom || histDateTo)}
                   periodoApuracao={periodoApuracao}
                   fmtHMReadable={fmtHMReadable}
+                  initialRequest={radarWorkspaceRequest}
                 />
               </Suspense>
             </div>

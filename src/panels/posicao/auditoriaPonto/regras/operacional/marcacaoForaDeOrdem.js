@@ -2,6 +2,7 @@ import { createAnomalia } from "../../types/regras.js";
 import { toMinutes } from "../../utils/tempo.js";
 
 export function regraMarcacaoForaDeOrdem(ctx) {
+  if (!ctx.isEventoPresencaPrincipal) return null;
   const bases = ctx.marcacaoTimes.map(toMinutes).filter((v) => v != null);
   if (bases.length < 3) return null;
   const inversoes = [];

@@ -4,6 +4,7 @@ import { normalizarMarcacoes } from "../../core/normalizador.js";
 
 export function regraInterjornadaInsuficiente(ctx) {
   if (!ctx.isEventoTrabalhado) return null;
+  if (!ctx.isEventoPresencaPrincipal) return null;
   if (!ctx.input.previousData || !ctx.input.data || ctx.input.previousData === ctx.input.data) return null;
   const previousMarks = normalizarMarcacoes(extractTimes(ctx.input.previousMarcacao), ctx.input.previousData);
   const firstCurrent = ctx.marcacoes[0];

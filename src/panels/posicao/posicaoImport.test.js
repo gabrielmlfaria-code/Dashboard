@@ -22,6 +22,7 @@ import {
   getColaboradoresFromGroup,
   isAtrasoHistEvent,
   mergeHistDayRow,
+  mergeHistTableRows,
   syncHistRowAggregates,
   importPosicaoXlsxFile,
   normalizeGenero,
@@ -30,6 +31,7 @@ import {
   pickDefaultHistDate,
   resolveDiaPayload,
 } from "./posicaoImport.js";
+import { parseXlsxToHistTabela } from "./importacao/parseXlsxToHistTabela.js";
 
 function makeWorkbookFile(sheets) {
   const wb = XLSX.utils.book_new();
@@ -651,4 +653,214 @@ test("formato de eventos preserva periodo em _employees para ferias e afastados"
   assert.equal(ferias[0].termino, "2026-05-15");
   assert.equal(afastados[0].inicio, "2026-05-10");
   assert.equal(afastados[0].termino, "2026-05-20");
+});
+
+test("importacao tabela importa descricao de evento pela coluna Evento Atrb", () => {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.aoa_to_sheet([
+      ["Data", "Matricula", "Nome", "Cod Evento", "Evento Atrb", "Apontamento.Horas"],
+      ["19/05/2026", "10", "Maria", "123", "HORAS NORMAIS", "08:00"],
+    ]),
+    "Eventos",
+  );
+
+  const rows = parseXlsxToHistTabela(wb, XLSX);
+  const hist = rows.find((r) => r.date === "2026-05-19");
+
+  assert.equal(hist._events[0].evento, "HORAS NORMAIS");
+  assert.equal(hist._events[0].cod, "123");
+});
+
+test("importa descricao de evento pela coluna Evento Atrb no formato eventos", async () => {
+  const file = makeWorkbookFile({
+    Eventos: [
+      ["Data", "Matricula", "Nome", "Cod Evento", "Evento Atrb", "Apontamento.Horas"],
+      ["19/05/2026", "10", "Maria", "123", "HORAS NORMAIS", "08:00"],
+    ],
+  });
+
+  const result = await importPosicaoXlsxFile(file, { targetDate: "2026-05-19" });
+
+  assert.equal(result.tabelaRows.find((r) => r.date === "2026-05-19").presentes, 1);
+});
+
+test("importacao tabela classifica ATRB ferias afastamento com marcacao como afastado", () => {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.aoa_to_sheet([
+      [
+        "colaborador.matricula",
+        "colaborador.nome",
+        "apontamento.data",
+        "apontamento.horario",
+        "evento.codigo",
+        "evento.descricao",
+        "marcacao.horario",
+        "marcacao.marcacao",
+        "apontamento.atividade",
+        "afastamento.inicio",
+        "afastamento.final",
+        "situacao.descricao",
+      ],
+      [
+        "5885",
+        "SEBASTIAO VIEIRA DA SILVA",
+        "06/05/2026",
+        "07:46",
+        "ATRB",
+        "FERIAS AFASTAMENTOS COM MARCACAO",
+        "230 - 06:00 11:00 12:00 15:00",
+        "05:21 11:00 12:00 14:07",
+        "Afastado",
+        "06/05/2026",
+        "08/05/2026",
+        "Auxilio Enfermidade",
+      ],
+    ]),
+    "Eventos",
+  );
+
+  const rows = parseXlsxToHistTabela(wb, XLSX);
+  const hist = rows.find((r) => r.date === "2026-05-06");
+  const emp = hist._employees.find((item) => item.mat === "5885");
+  const ev = hist._events.find((item) => item.cod === "ATRB");
+
+  assert.equal(ev.evento, "FERIAS AFASTAMENTOS COM MARCACAO");
+  assert.equal(ev.marcacao, "05:21 11:00 12:00 14:07");
+  assert.equal(ev.inicio, "2026-05-06");
+  assert.equal(ev.termino, "2026-05-08");
+  assert.equal(emp.cat, "afastados");
+  assert.equal(emp.inicio, "2026-05-06");
+  assert.equal(emp.termino, "2026-05-08");
+});
+
+test("formato eventos preserva ATRB como terceira linha do mesmo dia", async () => {
+  const file = makeWorkbookFile({
+    Eventos: [
+      [
+        "colaborador.matricula",
+        "colaborador.nome",
+        "colaborador.genero",
+        "apontamento.data",
+        "apontamento.horario",
+        "apontamento.cid",
+        "apontamento.cidDesc",
+        "evento.codigo",
+        "evento.descricao",
+        "marcacao.horario",
+        "marcacao.marcacao",
+        "apontamento.atividade",
+        "afastamento.inicio",
+        "afastamento.final",
+        "situacao.descricao",
+        "departamento.nome",
+        "cargo.descricao",
+        "filial.nomeFantasia",
+      ],
+      [
+        "5885",
+        "SEBASTIAO VIEIRA DA SILVA",
+        "",
+        "06/05/2026",
+        "07:46",
+        "",
+        "",
+        "012N",
+        "HS.EXTRAS 110% NAO AUT.",
+        "230 - 06:00 11:00 12:00 15:00",
+        "05:21 11:00 12:00 14:07",
+        "Afastado",
+        "06/05/2026",
+        "08/05/2026",
+        "Auxilio Enfermidade",
+        "MTRA - MOTORISTA 20HS",
+        "MOTORISTA",
+        "Filial 1",
+      ],
+      [
+        "5885",
+        "SEBASTIAO VIEIRA DA SILVA",
+        "",
+        "06/05/2026",
+        "07:20",
+        "",
+        "",
+        "49M",
+        "AUXILIO ENFERMIDADE",
+        "230 - 06:00 11:00 12:00 15:00",
+        "05:21 11:00 12:00 14:07",
+        "Afastado",
+        "06/05/2026",
+        "08/05/2026",
+        "Auxilio Enfermidade",
+        "MTRA - MOTORISTA 20HS",
+        "MOTORISTA",
+        "Filial 1",
+      ],
+      [
+        "5885",
+        "SEBASTIAO VIEIRA DA SILVA",
+        "",
+        "06/05/2026",
+        "07:46",
+        "",
+        "",
+        "ATRB",
+        "FERIAS AFASTAMENTOS COM MARCACAO",
+        "230 - 06:00 11:00 12:00 15:00",
+        "05:21 11:00 12:00 14:07",
+        "Afastado",
+        "06/05/2026",
+        "08/05/2026",
+        "Auxilio Enfermidade",
+        "MTRA - MOTORISTA 20HS",
+        "MOTORISTA",
+        "Filial 1",
+      ],
+    ],
+  });
+
+  const result = await importPosicaoXlsxFile(file, { targetDate: "2026-05-06" });
+  const hist = result.tabelaRows.find((r) => r.date === "2026-05-06");
+  const events = hist._events.filter((item) => item.mat === "5885");
+  const atrb = events.find((item) => item.cod === "ATRB");
+
+  assert.equal(events.length, 3);
+  assert.equal(atrb.evento, "FERIAS AFASTAMENTOS COM MARCACAO");
+  assert.equal(atrb.marcacao, "05:21 11:00 12:00 14:07");
+  assert.equal(atrb.inicio, "2026-05-06");
+  assert.equal(atrb.termino, "2026-05-08");
+  assert.equal(hist._employees.find((item) => item.mat === "5885").cat, "afastados");
+});
+
+test("mergeHistTableRows substitui eventos antigos ao reimportar mesma data", () => {
+  const prev = [
+    {
+      date: "2026-05-06",
+      _events: [
+        { mat: "5885", cod: "49M", evento: "AUXILIO ENFERMIDADE" },
+        { mat: "5885", cod: "012N", evento: "HS.EXTRAS 110% NAO AUT." },
+      ],
+      _employees: [{ mat: "5885", nome: "SEBASTIAO", cat: "afastados" }],
+    },
+  ];
+  const incoming = [
+    {
+      date: "2026-05-06",
+      _events: [
+        { mat: "5885", cod: "49M", evento: "AUXILIO ENFERMIDADE" },
+        { mat: "5885", cod: "012N", evento: "HS.EXTRAS 110% NAO AUT." },
+        { mat: "5885", cod: "ATRB", evento: "FERIAS AFASTAMENTOS COM MARCACAO" },
+      ],
+      _employees: [{ mat: "5885", nome: "SEBASTIAO", cat: "afastados" }],
+    },
+  ];
+
+  const merged = mergeHistTableRows(prev, incoming);
+
+  assert.equal(merged[0]._events.length, 3);
+  assert.equal(merged[0]._events.some((ev) => ev.cod === "ATRB"), true);
 });

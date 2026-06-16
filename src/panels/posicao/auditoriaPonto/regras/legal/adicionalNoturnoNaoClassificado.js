@@ -2,6 +2,7 @@ import { createAnomalia } from "../../types/regras.js";
 
 export function regraAdicionalNoturnoNaoClassificado(ctx) {
   if (!ctx.isEventoTrabalhado) return null;
+  if (!ctx.isEventoPresencaPrincipal) return null;
   const hasNightMark = ctx.marcacoes.some((item) => item.baseMinutes < 5 * 60 || item.baseMinutes >= 22 * 60);
   if (!hasNightMark || ctx.eventText.includes("noturno") || ctx.eventText.includes("adicional noturno")) return null;
   return createAnomalia({

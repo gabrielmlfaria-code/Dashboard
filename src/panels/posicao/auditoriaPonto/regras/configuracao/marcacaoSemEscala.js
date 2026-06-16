@@ -2,6 +2,7 @@ import { createAnomalia } from "../../types/regras.js";
 
 export function regraMarcacaoSemEscala(ctx) {
   if (!ctx.isEventoTrabalhado) return null;
+  if (!ctx.isEventoPresencaPrincipal) return null;
   if (!ctx.marcacoes.length || ctx.planejados.length) return null;
   return createAnomalia({
     severity: "media",

@@ -1,4 +1,7 @@
-import { DEFAULT_AUDITORIA_PONTO_EVENTOS_SEM_MARCACAO_OK } from "../config/parametros.js";
+import {
+  DEFAULT_AUDITORIA_PONTO_EVENTOS_JORNADA_PRINCIPAL,
+  DEFAULT_AUDITORIA_PONTO_EVENTOS_SEM_MARCACAO_OK,
+} from "../config/parametros.js";
 import { normText } from "../utils/tempo.js";
 
 const AUSENCIA_CATEGORIA_TERMS = [
@@ -91,9 +94,18 @@ export function isEventoAusenciaOuAfastamento(input = {}, params = {}) {
   );
 }
 
-export function isEventoPresenca(input = {}) {
+export function isEventoPresenca(input = {}, params = {}) {
   const text = getEventoAuditText(input);
-  return PRESENCA_EVENTO_TERMS.some((term) => text.includes(normText(term)));
+  if (!text) {
+    return Boolean(input?.horario || input?.marcacao || Number(input?.horas || 0) > 0);
+  }
+  const termos = Array.isArray(params.eventosJornadaPrincipal)
+    ? params.eventosJornadaPrincipal
+    : DEFAULT_AUDITORIA_PONTO_EVENTOS_JORNADA_PRINCIPAL;
+  return [...PRESENCA_EVENTO_TERMS, ...termos].some((term) => {
+    const normalized = normText(term);
+    return normalized && text.includes(normalized);
+  });
 }
 
 export function isEventoIgnoradoPorNatureza(input = {}, params = {}) {

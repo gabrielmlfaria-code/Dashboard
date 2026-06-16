@@ -1,7 +1,10 @@
 import { createAnomalia } from "../../types/regras.js";
+import { isEventoExtraOuCompensado } from "./classificacaoFinanceira.js";
 
 export function regraDivergenciaPlanejado(ctx) {
   if (!ctx.isEventoTrabalhado) return null;
+  if (!ctx.isEventoPresencaPrincipal) return null;
+  if ((ctx.sameDayEventTexts || []).some((text) => isEventoExtraOuCompensado(text))) return null;
   const item = ctx.pareamento.find(
     (p) => p.status === "PAREADO" && Math.abs(Number(p.desvioMinutos || 0)) > ctx.params.toleranciaMinutos,
   );

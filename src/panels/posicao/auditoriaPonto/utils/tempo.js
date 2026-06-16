@@ -27,9 +27,20 @@ export function stripHorarioCode(value) {
     .trim();
 }
 
+export function normalizeFaltaMarcacaoToken(value) {
+  return stripHorarioCode(value)
+    .replace(/\bF\s+M\b/gi, "FM")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function hasFaltaMarcacaoMarker(value) {
+  return /\bF\s*M\b/i.test(stripHorarioCode(value));
+}
+
 export function extractTimes(value) {
   if (Array.isArray(value)) return value.flatMap((item) => extractTimes(item));
-  return stripHorarioCode(value).match(/\b\d{1,2}:\d{2}\b/g) || [];
+  return normalizeFaltaMarcacaoToken(value).match(/\b\d{1,2}:\d{2}\b/g) || [];
 }
 
 export function sumPairs(marcacoesNormalizadas) {

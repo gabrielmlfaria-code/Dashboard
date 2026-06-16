@@ -1,6 +1,7 @@
 import { createAnomalia } from "../../types/regras.js";
 
 export function regraPareamentoAmbiguo(ctx) {
+  if (!ctx.isEventoPresencaPrincipal) return null;
   const ambiguos = ctx.pareamento.filter((item) => item.status === "AMBIGUO");
   if (!ambiguos.length) return null;
   return createAnomalia({

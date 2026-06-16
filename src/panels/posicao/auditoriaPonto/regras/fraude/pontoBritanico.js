@@ -2,6 +2,7 @@ import { createAnomalia } from "../../types/regras.js";
 
 export function regraPontoBritanico(ctx) {
   if (!ctx.isEventoTrabalhado) return null;
+  if (!ctx.isEventoPresencaPrincipal) return null;
   if (Number(ctx.input.pontoBritanicoRepeticoes || 0) < ctx.params.pontoBritanicoDias || ctx.marcacoes.length < 2) {
     return null;
   }

@@ -2,6 +2,7 @@ import { createAnomalia } from "../../types/regras.js";
 
 export function regraSequenciaDiasSemFolga(ctx) {
   if (!ctx.isEventoTrabalhado) return null;
+  if (!ctx.isEventoPresencaPrincipal) return null;
   const dias = Number(ctx.input.diasConsecutivosTrabalhados || ctx.input.workDaysInSequence || 0);
   if (!dias || dias <= ctx.params.diasConsecutivosLimite) return null;
 

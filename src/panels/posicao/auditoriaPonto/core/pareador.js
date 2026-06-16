@@ -1,5 +1,23 @@
 export function parearHorarios(horariosPlanejados = [], marcacoes = [], parametros = {}) {
   const janela = Number(parametros.janelaPareamentoMaxMinutos || 180);
+  if (
+    horariosPlanejados.length > 0 &&
+    horariosPlanejados.length === marcacoes.length &&
+    horariosPlanejados.every((item) => Number.isFinite(item?.minutes)) &&
+    marcacoes.every((item) => Number.isFinite(item?.minutes))
+  ) {
+    return horariosPlanejados.map((horario, posicao) => {
+      const marcacao = marcacoes[posicao];
+      const desvioMinutos = marcacao.minutes - horario.minutes;
+      return {
+        posicao,
+        horarioPrevisto: horario,
+        marcacaoEncontrada: marcacao,
+        desvioMinutos,
+        status: Math.abs(desvioMinutos) <= janela ? "PAREADO" : "FORA_JANELA",
+      };
+    });
+  }
   const used = new Set();
   const result = [];
 

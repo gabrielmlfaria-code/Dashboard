@@ -147,6 +147,23 @@ function comparableText(value) {
     .trim();
 }
 
+function eventMatchesRadarRequest(row, request = {}) {
+  if (!row || !request) return false;
+  const rowEvent = comparableText(row.evento);
+  const reqEvent = comparableText(request.evento);
+  const reqOriginalEvent = comparableText(request.eventoOriginal);
+  const rowCode = comparableText(row.codigo || row.cod || row.eventoCodigo);
+  const reqCode = comparableText(request.codigo);
+  if (reqCode && rowCode && rowCode === reqCode) return true;
+  if (!reqEvent) return false;
+  return (
+    rowEvent === reqEvent ||
+    rowEvent.includes(reqEvent) ||
+    reqEvent.includes(rowEvent) ||
+    (reqOriginalEvent && (rowEvent.includes(reqOriginalEvent) || reqOriginalEvent.includes(rowEvent)))
+  );
+}
+
 function eventCollaboratorName(ev) {
   return String(ev?.nome || ev?.colaborador || ev?.colaboradorNome || "").trim();
 }
@@ -188,9 +205,12 @@ export function RadarTrabalhistaShell({
   customPeriod = false,
   periodoApuracao = null,
   fmtHMReadable,
+  initialRequest = null,
 }) {
   const isDark = theme === "dark";
-  const [page, setPage] = useState("visao");
+  const [page, setPage] = useState(
+    PAGE_IDS.includes(initialRequest?.page) ? initialRequest.page : "visao",
+  );
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [filtroDepts, setFiltroDepts] = useState([]);
   const [filtroDept, setFiltroDept] = useState("");
@@ -204,6 +224,7 @@ export function RadarTrabalhistaShell({
   const [cctCount, setCctCount] = useState(0);
   const pageBodyRef = useRef(null);
   const cctFileInputRef = useRef(null);
+  const handledOpenPlaybookRef = useRef("");
 
   const goToPage = useCallback((id) => {
     if (!PAGE_IDS.includes(id)) return;
@@ -318,6 +339,48 @@ export function RadarTrabalhistaShell({
     ],
   );
 
+  useEffect(() => {
+    if (!initialRequest?.openPlaybook) return;
+    const requestKey = [
+      initialRequest.evento || "",
+      initialRequest.eventoOriginal || "",
+      initialRequest.codigo || "",
+      initialRequest.colaborador || "",
+      initialRequest.matricula || "",
+      initialRequest.data || "",
+      initialRequest.seq || "",
+    ].join("|");
+    if (handledOpenPlaybookRef.current === requestKey) return;
+    const matched =
+      data.eventTypes.find((row) => eventMatchesRadarRequest(row, initialRequest)) ||
+      (initialRequest.evento
+        ? {
+            evento: initialRequest.evento,
+            codigo: initialRequest.codigo || "",
+            baseLegal: "Base legal/CCT a verificar",
+            ocorrencias: 1,
+            colaboradores: initialRequest.colaborador ? 1 : 0,
+            passivo: 0,
+            pct: 0,
+            historico: [
+              {
+                nome: initialRequest.colaborador || "",
+                mat: initialRequest.matricula || "",
+                date: initialRequest.data || "",
+                evento: initialRequest.evento,
+                eventoOriginal: initialRequest.eventoOriginal || "",
+                codigo: initialRequest.codigo || "",
+              },
+            ],
+          }
+        : null);
+    if (matched) {
+      handledOpenPlaybookRef.current = requestKey;
+      setPage("eventos");
+      setEventPlaybook(matched);
+    }
+  }, [initialRequest, data.eventTypes]);
+
   const dashboardNlContext = useMemo(
     () =>
       buildDashboardNlContext({
@@ -422,6 +485,27 @@ export function RadarTrabalhistaShell({
     },
     [applyNlRadarFilter, goToPage, onOpenHistorico],
   );
+
+  useEffect(() => {
+    if (!initialRequest) return;
+    const filter = initialRequest.filter;
+    if (filter?.field && filter?.value) {
+      const field = String(filter.field).toLowerCase();
+      const value = String(filter.value).trim();
+      if (field === "colaborador") {
+        setFiltroColab(value);
+        setFiltroDepts([]);
+        setFiltroDept("");
+      } else if (field === "departamento" || field === "depto") {
+        setFiltroColab("");
+        setFiltroDepts([value]);
+        setFiltroDept(value);
+      }
+    }
+    if (initialRequest.page && PAGE_IDS.includes(initialRequest.page)) {
+      goToPage(initialRequest.page);
+    }
+  }, [goToPage, initialRequest]);
 
   const deptOptions = useMemo(
     () => buildRadarTrabalhistaDataset(histRows, { filtroDepts: [], passivoCfg }).deptNames,

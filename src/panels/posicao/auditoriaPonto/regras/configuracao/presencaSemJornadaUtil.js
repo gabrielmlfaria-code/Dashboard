@@ -2,7 +2,7 @@ import { createAnomalia } from "../../types/regras.js";
 import { isEventoPresencaText } from "../classificacaoEventos.js";
 
 export function regraPresencaSemJornadaUtil(ctx) {
-  if (!isEventoPresencaText(ctx.input)) return null;
+  if (!isEventoPresencaText(ctx.input, ctx.params)) return null;
   if (Number(ctx.input.horas || 0) > 0 || ctx.marcacoes.length || ctx.planejados.length) return null;
 
   return createAnomalia({

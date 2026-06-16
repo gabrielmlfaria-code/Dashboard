@@ -2,6 +2,7 @@ import { createAnomalia } from "../../types/regras.js";
 import { isEventoSemMarcacaoAceitavel } from "../eventoNatureza.js";
 
 export function regraEventoSemMarcacao(ctx) {
+  if (!ctx.isEventoPresencaPrincipal) return null;
   if (ctx.marcacoes.length || !ctx.planejados.length || isEventoSemMarcacaoAceitavel(ctx.input, ctx.params)) return null;
   return createAnomalia({
     severity: "critica",

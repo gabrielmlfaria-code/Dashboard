@@ -2,6 +2,7 @@ import { createAnomalia } from "../../types/regras.js";
 
 export function regraMinutosResiduaisExcedidos(ctx) {
   if (!ctx.isEventoTrabalhado) return null;
+  if (!ctx.isEventoPresencaPrincipal) return null;
   const item = ctx.pareamento.find(
     (p) =>
       p.status === "PAREADO" &&

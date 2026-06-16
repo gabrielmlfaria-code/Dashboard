@@ -24,6 +24,7 @@ export function regraDomingoFeriadoSemClassificacao(ctx) {
   if (!isDomingoOuFeriado(ctx.input)) return null;
   if (isEventoDomingoFeriadoClassificado(ctx.eventText)) return null;
   if (isEventoSemMarcacaoAceitavel(ctx.input, ctx.params)) return null;
+  if (ctx.isEventoPresencaPrincipal && ctx.planejados.length) return null;
   if (!ctx.marcacoes.length && Number(ctx.input.horas || 0) <= 0) return null;
 
   return createAnomalia({

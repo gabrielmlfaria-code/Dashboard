@@ -26,3 +26,10 @@ export const DEFAULT_AUDITORIA_PONTO_EVENTOS_SEM_MARCACAO_OK = [
   "falta nao justificada",
   "falta injustificada",
 ];
+
+export const DEFAULT_AUDITORIA_PONTO_EVENTOS_JORNADA_PRINCIPAL = [
+  "horas normais",
+  "jornada normal",
+  "trabalho normal",
+  "presente",
+];

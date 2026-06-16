@@ -14,9 +14,9 @@ export function inferPeriodoCategoryFromEventText(value) {
     .normalize("NFD")
     .replace(/\p{M}/gu, "");
   if (!s) return "";
-  if (/\bferias\b|vacat/.test(s)) return "ferias";
   if (/afast|licenca|licenca medica|auxilio|inss|atestado|enfermidade|maternidade|acidente/.test(s))
     return "afastados";
+  if (/\bferias\b|vacat/.test(s)) return "ferias";
   return "";
 }
 

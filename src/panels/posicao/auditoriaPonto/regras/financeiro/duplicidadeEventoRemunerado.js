@@ -1,22 +1,63 @@
 import { createAnomalia } from "../../types/regras.js";
-import { isEventoAusenciaIntegralText, isEventoRemuneradoText, textFromEvent } from "../classificacaoEventos.js";
+import {
+  isEventoAusenciaIntegralText,
+  isEventoPresencaText,
+  textFromEvent,
+} from "../classificacaoEventos.js";
 
 function getEventosDia(input) {
   const value = input?.eventosDia || input?.eventosMesmoDia || input?.sameDayEvents || [];
   return Array.isArray(value) ? value : [];
 }
 
+function isEventoComplementarOuRisco(text) {
+  return (
+    text.includes("total de jornada") ||
+    text.includes("jornada maior que") ||
+    text.includes("risco trab") ||
+    text.includes("risco trabalhista") ||
+    text.includes("atraso refeicao") ||
+    text.includes("atraso refeição") ||
+    text.includes("intervalo menor") ||
+    text.includes("sem intervalo") ||
+    text.includes("mais de 6 horas sem refeicao") ||
+    text.includes("mais de 6 horas sem refeição") ||
+    /\b(1h|sir|6hsi)\b/.test(text)
+  );
+}
+
+function uniqueEventKey(item) {
+  return [
+    item?.cod || item?.codigo || "",
+    item?.evento || item?.situacaoDesc || item || "",
+    item?.horas || "",
+  ]
+    .map((part) => String(part ?? "").replace(/\s+/g, " ").trim())
+    .join("|");
+}
+
 export function regraDuplicidadeEventoRemunerado(ctx) {
   const eventos = getEventosDia(ctx.input);
   if (eventos.length < 2) return null;
 
-  const remunerados = eventos.filter((item) => isEventoRemuneradoText(item));
+  const unique = new Map();
+  for (const item of eventos) {
+    unique.set(uniqueEventKey(item), item);
+  }
+
+  const eventosAuditaveis = [...unique.values()].filter((item) => {
+    const text = textFromEvent(item);
+    return !isEventoComplementarOuRisco(text);
+  });
   const ausencia = eventos.find((item) => isEventoAusenciaIntegralText(item));
   const presencaOuExtra = eventos.find((item) => {
     const text = textFromEvent(item);
     return text.includes("horas normais") || text.includes("extra") || text.includes("banco");
   });
-  if (remunerados.length < 2 && !(ausencia && presencaOuExtra)) return null;
+  const jornadasPrincipais = eventosAuditaveis.filter((item) => isEventoPresencaText(item, ctx.params));
+  const conflitoAusenciaComTrabalho = Boolean(ausencia && presencaOuExtra);
+  const duplicidadeJornadaPrincipal = jornadasPrincipais.length > 1;
+  if (!conflitoAusenciaComTrabalho && !duplicidadeJornadaPrincipal) return null;
 
   return createAnomalia({
     severity: "alta",
@@ -26,7 +67,7 @@ export function regraDuplicidadeEventoRemunerado(ctx) {
     categoria: "financeiro",
     memoria: [
       `Eventos avaliados: ${eventos.map((item) => item?.evento || item?.situacaoDesc || item).join(" | ")}`,
-      `Eventos remunerados/conflitantes: ${remunerados.length}`,
+      `Jornadas principais conflitantes: ${jornadasPrincipais.length}`,
     ],
   });
 }

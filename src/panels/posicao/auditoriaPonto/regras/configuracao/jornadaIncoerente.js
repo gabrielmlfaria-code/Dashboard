@@ -1,6 +1,7 @@
 import { createAnomalia } from "../../types/regras.js";
 
 export function regraJornadaIncoerente(ctx) {
+  if (!ctx.isEventoPresencaPrincipal) return null;
   if (!ctx.planejados.length || ctx.planejados.length % 2 === 0) return null;
   return createAnomalia({
     severity: "media",

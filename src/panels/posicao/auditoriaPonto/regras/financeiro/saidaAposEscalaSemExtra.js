@@ -4,7 +4,9 @@ import { isEventoExtraOuCompensado } from "./classificacaoFinanceira.js";
 
 export function regraSaidaAposEscalaSemExtra(ctx) {
   if (!ctx.isEventoTrabalhado) return null;
+  if (!ctx.isEventoPresencaPrincipal) return null;
   if (isEventoExtraOuCompensado(ctx.eventText)) return null;
+  if ((ctx.sameDayEventTexts || []).some((text) => isEventoExtraOuCompensado(text))) return null;
   if (ctx.planejados.length < 2 || ctx.marcacoes.length < 2) return null;
 
   const saidaPrevista = [...ctx.planejados].reverse().find((item, reverseIndex) => {

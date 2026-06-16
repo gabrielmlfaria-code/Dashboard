@@ -1,6 +1,42 @@
 ﻿import { fixPosicaoSheetRef, normalizeGenero, _fmtTime } from "../posicaoImport.js";
 import { parseBancoHorasMin } from "../banco-horas/bancoHorasStats.js";
+import { capWorkedHours } from "../radarHoursUtils.js";
 import { buildEventKey, inferPeriodoCategoryFromEventText } from "../utils/positionDiagnosisRows.js";
+
+const DEFAULT_EVENT_CATEGORIES = [
+  { name: "Presenca normal", category: "presentes" },
+  { name: "Presença normal", category: "presentes" },
+  { name: "Horas normais", category: "presentes" },
+  { name: "Hora extra 50%", category: "extras" },
+  { name: "Hora extra 100%", category: "extras" },
+  { name: "Banco de horas", category: "extras" },
+  { name: "Falta injustificada", category: "ausentes" },
+  { name: "Atraso", category: "ausentes" },
+  { name: "Falta justificada", category: "justificadas" },
+  { name: "Atestado medico", category: "justificadas" },
+  { name: "Atestado médico", category: "justificadas" },
+  { name: "Licenca", category: "justificadas" },
+  { name: "Licença", category: "justificadas" },
+  { name: "Ferias", category: "justificadas" },
+  { name: "Férias", category: "justificadas" },
+];
+
+function loadImportEventCategories() {
+  try {
+    if (typeof localStorage === "undefined") return DEFAULT_EVENT_CATEGORIES;
+    const saved = JSON.parse(localStorage.getItem("pb_event_categories") || "null");
+    return Array.isArray(saved) ? [...saved, ...DEFAULT_EVENT_CATEGORIES] : DEFAULT_EVENT_CATEGORIES;
+  } catch {
+    return DEFAULT_EVENT_CATEGORIES;
+  }
+}
+
+function normalizeMarcacaoImportValue(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\bF\s+M\b/gi, "FM")
+    .replace(/\s+/g, " ");
+}
 
 export function parseXlsxToHistTabela(wb, XLSX) {
   const ws = wb.Sheets[wb.SheetNames[0]];
@@ -115,6 +151,9 @@ export function parseXlsxToHistTabela(wb, XLSX) {
         "cod",
         "c?digo",
         "evento.descricao",
+        "evento atrb",
+        "evento atrib",
+        "evento atributo",
         "evento",
         "descricao",
         "descri?o",
@@ -278,8 +317,11 @@ export function parseXlsxToHistTabela(wb, XLSX) {
     { reject: ["colaborador"] },
   );
   const descCol = exactOrFind(
-    ["evento.descricao"],
+    ["evento.descricao", "evento atrb", "evento atrib", "evento atributo"],
     [
+      "evento atrb",
+      "evento atrib",
+      "evento atributo",
       "descricao evento",
       "descri?o evento",
       "nome evento",
@@ -629,7 +671,7 @@ export function parseXlsxToHistTabela(wb, XLSX) {
     );
   }
 
-  const cats = loadEventCategories();
+  const cats = loadImportEventCategories();
   const eventKeyNorm = (v) => norm(v).replace(/\s+/g, " ").trim();
   const eventKeyLoose = (v) => eventKeyNorm(v).replace(/[^a-z0-9]+/g, "");
   const catByName = {};
@@ -700,19 +742,21 @@ export function parseXlsxToHistTabela(wb, XLSX) {
     const mins = totalCol >= 0 ? parseTimeMin(row[totalCol]) : 0;
     let marcacaoRaw = "";
     if (marcacaoCol >= 0 && marcacaoCol !== horarioCol) {
-      marcacaoRaw = String(row[marcacaoCol] ?? "").trim();
+      marcacaoRaw = normalizeMarcacaoImportValue(row[marcacaoCol]);
     }
     if (!marcacaoRaw && marcPartCols.length) {
-      marcacaoRaw = marcPartCols
+      marcacaoRaw = normalizeMarcacaoImportValue(marcPartCols
         .map((colIdx) => _fmtTime(row[colIdx]))
         .filter(Boolean)
-        .join(" ");
+        .join(" "));
     }
     const horarioStr = horarioCol >= 0 ? String(row[horarioCol] ?? "").trim() : "";
     if (marcacaoRaw && horarioStr && marcacaoRaw === horarioStr) marcacaoRaw = "";
     const planMins = horarioCol >= 0 ? parseHorarioMin(row[horarioCol]) : 0;
     const eventPeriodoCat = inferPeriodoCategoryFromEventText(
-      `${eventKey || ""} ${descRaw || ""} ${codRaw || ""} ${situacaoRaw || ""}`,
+      `${eventKey || ""} ${descRaw || ""} ${codRaw || ""} ${situacaoRaw || ""} ${
+        atividadeCol >= 0 ? String(row[atividadeCol] ?? "") : ""
+      }`,
     );
     let category =
       catByName[eventKeyNorm(eventKey)] ||

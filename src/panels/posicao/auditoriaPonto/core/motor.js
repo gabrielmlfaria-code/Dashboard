@@ -1,4 +1,5 @@
 import {
+  DEFAULT_AUDITORIA_PONTO_EVENTOS_JORNADA_PRINCIPAL,
   DEFAULT_AUDITORIA_PONTO_EVENTOS_SEM_MARCACAO_OK,
   DEFAULT_AUDITORIA_PONTO_PARAMS,
 } from "../config/parametros.js";
@@ -7,16 +8,18 @@ import { agregarAnomalias } from "./agregador.js";
 import { normalizarMarcacoes } from "./normalizador.js";
 import { parearHorarios } from "./pareador.js";
 import { SEVERITY_LABEL } from "../types/regras.js";
-import { extractTimes, fmtMin, normText, sumPairs } from "../utils/tempo.js";
+import { extractTimes, fmtMin, hasFaltaMarcacaoMarker, normText, sumPairs } from "../utils/tempo.js";
 import { simpleHash } from "../utils/hash.js";
 import { normalizarParametros } from "../utils/validadores.js";
 import {
   getEventoAuditText,
+  isEventoPresenca,
   isEventoRiscoTrabalhista,
   isEventoTrabalhado,
 } from "../regras/eventoNatureza.js";
 
 export const AUDITORIA_PONTO_MOTOR_VERSION = "2.5.0";
+const AUDITORIA_RULE_TREATMENT_ACTIONABLE = new Set(["acao", "revisao_manual"]);
 
 export const DEFAULT_AUDITORIA_PONTO_EVENTOS_IGNORADOS = [
   {
@@ -124,6 +127,12 @@ function normalizarCustomRules(parametros = {}) {
       mensagem: String(rule.mensagem || "").trim(),
     }))
     .filter((rule) => rule.valor);
+}
+
+function getRuleTreatment(parametros = {}, ruleId = "") {
+  const treatments = parametros?.tratamentoRegras || parametros?.regraTratamentos || {};
+  const value = String(treatments?.[ruleId] || "acao");
+  return ["acao", "informativa", "nao_aplicavel", "revisao_manual"].includes(value) ? value : "acao";
 }
 
 function getCustomRuleValue(input = {}, campo = "") {
@@ -261,6 +270,7 @@ export function analisarAnomaliasPonto(input = {}, parametros = {}) {
   const regrasAtivas = REGRAS_AUDITORIA_PONTO.filter((regra) => !regrasDesativadas.has(regra.id));
   const horarioTimes = extractTimes(input.horario);
   const marcacaoTimes = extractTimes(input.marcacao);
+  const faltaMarcacaoIdentificada = hasFaltaMarcacaoMarker(input.marcacao);
   const planejados = normalizarMarcacoes(horarioTimes, input.data);
   const marcacoes = normalizarMarcacoes(marcacaoTimes, input.data);
   const pareamento = parearHorarios(planejados, marcacoes, params);
@@ -269,11 +279,16 @@ export function analisarAnomaliasPonto(input = {}, parametros = {}) {
     params,
     horarioTimes,
     marcacaoTimes,
+    faltaMarcacaoIdentificada,
     planejados,
     marcacoes,
     pareamento,
     eventText: getEventoAuditText(input),
+    sameDayEventTexts: (Array.isArray(input.sameDayEvents) ? input.sameDayEvents : [])
+      .map((event) => getEventoAuditText(event))
+      .filter(Boolean),
     isEventoTrabalhado: isEventoTrabalhado(input, params),
+    isEventoPresencaPrincipal: isEventoPresenca(input, params),
   };
 
   const hashRegrasAtivas = simpleHash([
@@ -311,15 +326,17 @@ export function analisarAnomaliasPonto(input = {}, parametros = {}) {
   };
 
   if (eventoIgnorado?.regras?.includes("todas") || riscoTrabalhistaIgnorado) {
+    const radarMessage = "Risco trabalhista: consulte o Radar.";
     return {
       ...base,
       status: "ignorado",
       severidade: "ok",
-      observacao: "",
-      detalhes: [],
+      observacao: riscoTrabalhistaIgnorado ? radarMessage : "",
+      detalhes: riscoTrabalhistaIgnorado ? [radarMessage] : [],
       memoria: null,
       anomalias: [],
       ignoradoAuditoria: true,
+      radarTrabalhista: riscoTrabalhistaIgnorado,
       motivoIgnoradoAuditoria: riscoTrabalhistaIgnorado
         ? "Evento ja tratado no Radar Trabalhista."
         : eventoIgnorado.motivo,
@@ -386,6 +403,8 @@ export function analisarAnomaliasPonto(input = {}, parametros = {}) {
     status: aggregated.statusFechamento === "bloqueado" ? "bloqueado" : "revisar",
     severidade: aggregated.severidadeMaxima,
     codigo: aggregated.worst.code,
+    tratamentoRegra: getRuleTreatment(parametros, aggregated.worst.code),
+    passivelAcao: AUDITORIA_RULE_TREATMENT_ACTIONABLE.has(getRuleTreatment(parametros, aggregated.worst.code)),
     observacao: `${SEVERITY_LABEL[aggregated.worst.severity]}: ${aggregated.worst.message}`,
     detalhes: aggregated.anomalias.map((issue) => [issue.message, issue.details].filter(Boolean).join(" ")),
     memoria: buildMemoria({
@@ -402,4 +421,8 @@ export function analisarAnomaliasPonto(input = {}, parametros = {}) {
   };
 }
 
-export { DEFAULT_AUDITORIA_PONTO_EVENTOS_SEM_MARCACAO_OK, DEFAULT_AUDITORIA_PONTO_PARAMS };
+export {
+  DEFAULT_AUDITORIA_PONTO_EVENTOS_JORNADA_PRINCIPAL,
+  DEFAULT_AUDITORIA_PONTO_EVENTOS_SEM_MARCACAO_OK,
+  DEFAULT_AUDITORIA_PONTO_PARAMS,
+};

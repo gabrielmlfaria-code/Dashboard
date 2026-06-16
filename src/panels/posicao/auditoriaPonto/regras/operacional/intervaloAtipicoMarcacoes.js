@@ -2,6 +2,7 @@ import { createAnomalia } from "../../types/regras.js";
 import { fmtMin } from "../../utils/tempo.js";
 
 export function regraIntervaloAtipicoMarcacoes(ctx) {
+  if (!ctx.isEventoPresencaPrincipal) return null;
   if (ctx.marcacoes.length < 4) return null;
   const pausas = [];
   for (let i = 1; i + 1 < ctx.marcacoes.length; i += 2) {
