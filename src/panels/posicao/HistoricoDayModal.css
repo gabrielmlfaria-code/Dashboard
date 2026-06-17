@@ -1183,6 +1183,33 @@ button.hdm-pill.is-processing {
   padding: 10px 20px;
   flex-shrink: 0;
 }
+.hdm-toolbar--collab-detail {
+  align-items: flex-start;
+}
+.hdm-toolbar-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+.hdm-toolbar--collab-detail .hdm-toolbar-secondary {
+  margin-left: auto;
+}
+.hdm-toolbar--collab-detail .hdm-search {
+  flex: 1 1 260px;
+  max-width: 420px;
+}
+.hdm-toolbar--collab-detail .hdm-audit-review-summary {
+  flex: 0 1 auto;
+}
+@media (max-width: 900px) {
+  .hdm-toolbar--collab-detail .hdm-toolbar-secondary {
+    flex-basis: 100%;
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+}
 .hdm-search {
   flex: 1;
   min-width: 140px;

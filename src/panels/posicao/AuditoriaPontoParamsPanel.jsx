@@ -111,6 +111,10 @@ export function AuditoriaPontoParamsPanel({ open, value, onChange, onClose, onSa
     left: 32,
     top: 72,
   }));
+  const [newTextTerm, setNewTextTerm] = useState({
+    eventosJornadaPrincipal: "",
+    eventosSemMarcacaoOk: "",
+  });
   const dragRef = useRef(null);
 
   useEffect(() => {
@@ -172,6 +176,14 @@ export function AuditoriaPontoParamsPanel({ open, value, onChange, onClose, onSa
         .filter(Boolean),
     });
   };
+  const addTextListTerm = (key) => {
+    const term = String(newTextTerm[key] || "").trim();
+    if (!term) return;
+    const current = Array.isArray(config[key]) ? config[key] : [];
+    const exists = current.some((item) => String(item || "").trim().toLowerCase() === term.toLowerCase());
+    emitChange({ [key]: exists ? current : [...current, term] });
+    setNewTextTerm((prev) => ({ ...prev, [key]: "" }));
+  };
   const toggleRule = (ruleId) => {
     const next = new Set(disabledSet);
     if (next.has(ruleId)) next.delete(ruleId);
@@ -180,6 +192,14 @@ export function AuditoriaPontoParamsPanel({ open, value, onChange, onClose, onSa
   };
   const activateAll = () => emitChange({ regrasDesativadas: [] });
   const deactivateAll = () => emitChange({ regrasDesativadas: REGRAS_AUDITORIA_PONTO_META.map((rule) => rule.id) });
+  const setAllRuleTreatments = (treatment) => {
+    emitChange({
+      tratamentoRegras: REGRAS_AUDITORIA_PONTO_META.reduce((acc, rule) => {
+        acc[rule.id] = treatment;
+        return acc;
+      }, {}),
+    });
+  };
   const updateCustomRule = (ruleId, patch) => {
     emitChange({ regrasCustomizadas: customRules.map((rule) => (rule.id === ruleId ? { ...rule, ...patch } : rule)) });
   };
@@ -296,6 +316,28 @@ export function AuditoriaPontoParamsPanel({ open, value, onChange, onClose, onSa
             </div>
             <label className="pb-audit-custom-rule">
               <span>Um termo por linha</span>
+              <div className="pb-audit-term-add-row">
+                <input
+                  value={newTextTerm.eventosJornadaPrincipal}
+                  onChange={(ev) =>
+                    setNewTextTerm((prev) => ({ ...prev, eventosJornadaPrincipal: ev.target.value }))
+                  }
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter") {
+                      ev.preventDefault();
+                      addTextListTerm("eventosJornadaPrincipal");
+                    }
+                  }}
+                  placeholder="Adicionar termo de jornada principal"
+                />
+                <button
+                  type="button"
+                  className="pb-audit-action-btn"
+                  onClick={() => addTextListTerm("eventosJornadaPrincipal")}
+                >
+                  Adicionar
+                </button>
+              </div>
               <textarea
                 value={(config.eventosJornadaPrincipal || []).join("\n")}
                 onChange={(ev) => updateTextList("eventosJornadaPrincipal", ev.target.value)}
@@ -311,6 +353,28 @@ export function AuditoriaPontoParamsPanel({ open, value, onChange, onClose, onSa
             </div>
             <label className="pb-audit-custom-rule">
               <span>Um termo por linha</span>
+              <div className="pb-audit-term-add-row">
+                <input
+                  value={newTextTerm.eventosSemMarcacaoOk}
+                  onChange={(ev) =>
+                    setNewTextTerm((prev) => ({ ...prev, eventosSemMarcacaoOk: ev.target.value }))
+                  }
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter") {
+                      ev.preventDefault();
+                      addTextListTerm("eventosSemMarcacaoOk");
+                    }
+                  }}
+                  placeholder="Adicionar termo aceito sem marcacao"
+                />
+                <button
+                  type="button"
+                  className="pb-audit-action-btn"
+                  onClick={() => addTextListTerm("eventosSemMarcacaoOk")}
+                >
+                  Adicionar
+                </button>
+              </div>
               <textarea
                 value={(config.eventosSemMarcacaoOk || []).join("\n")}
                 onChange={(ev) => updateTextList("eventosSemMarcacaoOk", ev.target.value)}
@@ -332,6 +396,26 @@ export function AuditoriaPontoParamsPanel({ open, value, onChange, onClose, onSa
                 <button type="button" className="pb-audit-action-btn pb-audit-action-btn--danger" onClick={deactivateAll}>
                   Desativar todas
                 </button>
+                <label className="pb-audit-rule-bulk-treatment">
+                  <span>Alterar todas para</span>
+                  <select
+                    defaultValue=""
+                    onChange={(ev) => {
+                      if (!ev.target.value) return;
+                      setAllRuleTreatments(ev.target.value);
+                      ev.target.value = "";
+                    }}
+                  >
+                    <option value="" disabled>
+                      Selecione
+                    </option>
+                    {AUDIT_RULE_TREATMENTS.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
             </div>
             <div className="pb-audit-rules-list">

@@ -2139,6 +2139,8 @@ export function HistoricoDayModal({
 
   const collaboratorDetailMode = isEventsMode && !isApiMode && !isPosEmbedded && groupBy[0] === "mat";
   const auditWorkspaceMode = collaboratorDetailMode && Boolean(initialAuditOnly);
+  const showCollabAuditDetails = auditWorkspaceMode;
+  const collabDetailColSpan = showCollabAuditDetails ? 5 : 4;
   const collabGroupInitialLimit = auditWorkspaceMode
     ? HDM_AUDIT_COLLAB_GROUP_INITIAL_LIMIT
     : HDM_COLLAB_GROUP_INITIAL_LIMIT;
@@ -2991,7 +2993,7 @@ export function HistoricoDayModal({
       tratado: 0,
       tratadoPct: 0,
     };
-    if (!collaboratorDetailMode) return summary;
+    if (!showCollabAuditDetails) return summary;
 
     const byColab = new Map();
     const summaryIndices = deferredFilteredEventIndices;
@@ -3034,7 +3036,7 @@ export function HistoricoDayModal({
     summary.tratadoPct = summary.total ? Math.round((summary.tratado / summary.total) * 100) : 0;
     return summary;
   }, [
-    collaboratorDetailMode,
+    showCollabAuditDetails,
     deferredFilteredEventIndices,
     tableDataRows,
     auditParams,
@@ -3107,6 +3109,7 @@ export function HistoricoDayModal({
         <span>Horário / Marcação</span>
         {renderCollabResizeHandle("horario")}
       </th>
+      {showCollabAuditDetails ? (
       <th className="hdm-audit-th hdm-resizable-th">
         <div className="hdm-collab-filter-head">
           <span>Auditoria</span>
@@ -3127,6 +3130,7 @@ export function HistoricoDayModal({
         </div>
         {renderCollabResizeHandle("auditoria")}
       </th>
+      ) : null}
     </tr>
   );
 
@@ -3136,11 +3140,12 @@ export function HistoricoDayModal({
     const currentPage = Math.max(1, Number(collabGroupPage) || 1);
     const pageStart = (currentPage - 1) * pageSize;
     const pageEnd = pageStart + pageSize;
-    const needsAuditDuringFilter =
+    const needsAuditDuringFilter = showCollabAuditDetails && (
       auditSeverityFilter !== "todos" ||
       auditReviewStatusFilter !== "todos" ||
       (auditCriticalPendingOnly && auditSeverityFilter !== "todos") ||
-      isFiltered("auditoria");
+      isFiltered("auditoria")
+    );
     const shouldScanAllGroups = auditWorkspaceMode && needsAuditDuringFilter;
     const candidateNodes = shouldScanAllGroups ? nodes : nodes.slice(pageStart, pageEnd);
     const filteredIndexSet = new Set(filteredEventIndices);
@@ -3214,24 +3219,27 @@ export function HistoricoDayModal({
         (sourceEntries.length ? tableDataRows[sourceEntries[0].idx] : null);
       if (!firstRow) return null;
       const summaryEntries = auditWorkspaceMode ? sourceEntries : leafEntries;
-      const severitySummary = summaryEntries.reduce(
-        (acc, entry) => {
-          const ev = tableDataRows[entry.idx];
-          const audit = entry.audit || getEventAudit(ev, tableDataRows[sourceLeafIndices[entry.sourcePos - 1]], britanicoMap);
-          const reviewKey = entry.reviewKey || makeAuditReviewKey(ev, audit);
-          const review = entry.review || getAuditDisplayReview(audit, getAuditReview(reviewKey));
-          const severity = audit.severidade || "ok";
-          acc[severity] = (acc[severity] || 0) + 1;
-          if (review.status === "pendente" && isAuditActionable(audit)) {
-            acc.pendente += 1;
-            if (severity === "critica") acc.criticaPendente += 1;
-            if (severity === "alta") acc.altaPendente += 1;
-          }
-          if (review.status === "sem_acao") acc.semAcao += 1;
-          return acc;
-        },
-        { critica: 0, alta: 0, media: 0, baixa: 0, ok: 0, pendente: 0, criticaPendente: 0, altaPendente: 0, semAcao: 0 },
-      );
+      const emptySeveritySummary = { critica: 0, alta: 0, media: 0, baixa: 0, ok: 0, pendente: 0, criticaPendente: 0, altaPendente: 0, semAcao: 0 };
+      const severitySummary = showCollabAuditDetails
+        ? summaryEntries.reduce(
+            (acc, entry) => {
+              const ev = tableDataRows[entry.idx];
+              const audit = entry.audit || getEventAudit(ev, tableDataRows[sourceLeafIndices[entry.sourcePos - 1]], britanicoMap);
+              const reviewKey = entry.reviewKey || makeAuditReviewKey(ev, audit);
+              const review = entry.review || getAuditDisplayReview(audit, getAuditReview(reviewKey));
+              const severity = audit.severidade || "ok";
+              acc[severity] = (acc[severity] || 0) + 1;
+              if (review.status === "pendente" && isAuditActionable(audit)) {
+                acc.pendente += 1;
+                if (severity === "critica") acc.criticaPendente += 1;
+                if (severity === "alta") acc.altaPendente += 1;
+              }
+              if (review.status === "sem_acao") acc.semAcao += 1;
+              return acc;
+            },
+            { ...emptySeveritySummary },
+          )
+        : emptySeveritySummary;
       return { node, sourceLeafIndices, sourceEntries, britanicoMap, leafEntries, groupKey, visibleEntries, firstRow, severitySummary, hasDisplayColFilters };
     }).filter(Boolean);
     const totalGroupCount = shouldScanAllGroups ? preparedNodes.length : nodes.length;
@@ -3260,7 +3268,7 @@ export function HistoricoDayModal({
         (!needsAuditDuringFilter && !hasDisplayColFilters && leafEntries.length === sourceEntries.length);
       return [
         <tr key={`${node.colKey}:${node.label}:title`} className="hdm-collab-title-row">
-          <td colSpan={5}>
+          <td colSpan={collabDetailColSpan}>
             <button
               type="button"
               className="hdm-grp-btn-inline hdm-collab-title-btn"
@@ -3284,6 +3292,7 @@ export function HistoricoDayModal({
                   ? ` · ${leafEntries.length.toLocaleString("pt-BR")} exibidos`
                   : ""}
               </span>
+              {showCollabAuditDetails ? (
               <span
                 className={`hdm-collab-title-badges${showFullTitleBadges ? "" : " is-compact"}`}
                 aria-label="Resumo da auditoria do colaborador"
@@ -3294,6 +3303,7 @@ export function HistoricoDayModal({
                 {severitySummary.semAcao > 0 ? <span className="is-sem-acao">Sem ação {severitySummary.semAcao.toLocaleString("pt-BR")}</span> : null}
                 {severitySummary.ok > 0 ? <span className="is-ok">OK {severitySummary.ok.toLocaleString("pt-BR")}</span> : null}
               </span>
+              ) : null}
             </button>
           </td>
         </tr>,
@@ -3312,11 +3322,13 @@ export function HistoricoDayModal({
               const markDisplaySlots = buildMarkDisplaySlots(horarioParts, marcacaoParts);
               const markSlots = markDisplaySlots.length;
               const previousEv = tableDataRows[sourceLeafIndices[sourcePos - 1]];
-              const auditoria = audit || getEventAudit(ev, previousEv, britanicoMap);
-              const obs = String(auditoria.observacao || "")
+              const auditoria = showCollabAuditDetails ? (audit || getEventAudit(ev, previousEv, britanicoMap)) : null;
+              const obs = String(auditoria?.observacao || "")
                 .replace(/^(Critica|Crítica|Alta|Media|Média|Baixa|OK):\s*/i, "");
-              const reviewKey = preReviewKey || makeAuditReviewKey(ev, auditoria);
-              const review = preReview || getAuditDisplayReview(auditoria, getAuditReview(reviewKey));
+              const reviewKey = showCollabAuditDetails ? (preReviewKey || makeAuditReviewKey(ev, auditoria)) : "";
+              const review = showCollabAuditDetails
+                ? (preReview || getAuditDisplayReview(auditoria, getAuditReview(reviewKey)))
+                : null;
               const openAuditMemoria = () => {
                 setAuditQuestion("resumo");
                 setAuditMemoria({
@@ -3392,6 +3404,7 @@ export function HistoricoDayModal({
                       </>
                     ) : null}
                   </td>
+                  {showCollabAuditDetails ? (
                   <td
                     className={`hdm-collab-obs ${auditoria.severidade && auditoria.severidade !== "ok" ? `hdm-audit-${auditoria.severidade}` : ""}`}
                     data-severity={auditoria.severidade || "ok"}
@@ -3472,6 +3485,7 @@ export function HistoricoDayModal({
                       obs || null
                     )}
                   </td>
+                  ) : null}
                 </tr>
               );
             })}
@@ -3482,7 +3496,7 @@ export function HistoricoDayModal({
     if (totalPages > 1) {
       rendered.push(
         <tr key="__collab-groups-pagination" className="hdm-collab-more-row hdm-collab-group-more-row">
-          <td colSpan={5}>
+          <td colSpan={collabDetailColSpan}>
             <div className="hdm-collab-pagination">
               <span>
                 Colaboradores {firstVisibleGroup.toLocaleString("pt-BR")}-{lastVisibleGroup.toLocaleString("pt-BR")} de{" "}
@@ -3519,7 +3533,7 @@ export function HistoricoDayModal({
     if (!rendered.length) {
       return [
         <tr key="__collab-empty-after-filter">
-          <td colSpan={5} className="hdm-empty">
+          <td colSpan={collabDetailColSpan} className="hdm-empty">
             Nenhum evento encontrado para os filtros atuais.
           </td>
         </tr>,
@@ -4808,7 +4822,7 @@ export function HistoricoDayModal({
     return () => window.clearTimeout(t);
   }, [auditSummaryProcessing, auditSeverityFilter, filteredCount, collaboratorAuditSummary]);
 
-  const auditSummaryBar = collaboratorDetailMode && collaboratorAuditSummary ? (
+  const auditSummaryBar = showCollabAuditDetails && collaboratorAuditSummary ? (
     <div className="hdm-audit-summary-bar" aria-label="Resumo de severidade da auditoria">
       <button
         type="button"
@@ -4973,7 +4987,9 @@ export function HistoricoDayModal({
           )}
 
           {/* Toolbar — date inputs (events) + search on same row */}
-          <div className={`hdm-toolbar${auditWorkspaceMode ? " hdm-toolbar--audit" : ""}`}>
+          <div
+            className={`hdm-toolbar${auditWorkspaceMode ? " hdm-toolbar--audit" : ""}${collaboratorDetailMode && !auditWorkspaceMode ? " hdm-toolbar--collab-detail" : ""}`}
+          >
             {showDateRange && (
               <>
                 <span className="hdm-dr-label">De</span>
@@ -5063,7 +5079,7 @@ export function HistoricoDayModal({
               </button>
             )}
 
-            {collaboratorDetailMode && !auditWorkspaceMode && (
+            {showCollabAuditDetails && !auditWorkspaceMode && (
               <button
                 type="button"
                 className="hdm-tool-btn"
@@ -5074,7 +5090,7 @@ export function HistoricoDayModal({
               </button>
             )}
 
-            {collaboratorDetailMode && (
+            {showCollabAuditDetails && (
               <select
                 className={`hdm-audit-status-filter${auditReviewStatusFilter !== "todos" ? " active" : ""}`}
                 value={auditReviewStatusFilter}
@@ -5090,7 +5106,7 @@ export function HistoricoDayModal({
               </select>
             )}
 
-            {collaboratorDetailMode && (
+            {showCollabAuditDetails && (
               <button
                 type="button"
                 className={`hdm-tool-btn hdm-audit-actionable-toggle${auditCriticalPendingOnly ? " active" : ""}`}
@@ -5101,7 +5117,7 @@ export function HistoricoDayModal({
               </button>
             )}
 
-            {collaboratorDetailMode && !auditWorkspaceMode && auditReviewSummary.total > 0 && (
+            {showCollabAuditDetails && auditReviewSummary.total > 0 && (
               <div className="hdm-audit-review-summary" title="Resumo operacional da auditoria no filtro atual">
                 <span>Crit. pend. {auditReviewSummary.criticaPendente || 0}</span>
                 <span>Altas pend. {auditReviewSummary.altaPendente || 0}</span>
@@ -5192,6 +5208,7 @@ export function HistoricoDayModal({
               )}
             </div>
 
+            <div className="hdm-toolbar-secondary">
             {isEventsMode && !auditWorkspaceMode && (
               <button
                 type="button"
@@ -5279,12 +5296,12 @@ export function HistoricoDayModal({
                   <button type="button" className="hdm-export-item" onClick={exportCSV}>
                     📄 CSV
                   </button>
-                  {collaboratorDetailMode && (
+                  {showCollabAuditDetails && (
                     <button type="button" className="hdm-export-item" onClick={exportAuditCSV}>
                       Auditoria CSV
                     </button>
                   )}
-                  {collaboratorDetailMode && (
+                  {showCollabAuditDetails && (
                     <button type="button" className="hdm-export-item" onClick={exportAuditXLSX}>
                       Auditoria Excel
                     </button>
@@ -5297,6 +5314,8 @@ export function HistoricoDayModal({
                   </button>
                 </div>
               )}
+            </div>
+
             </div>
 
             {!isSheetImportEmbedded && hasAnyFilter ? (
@@ -5373,8 +5392,6 @@ export function HistoricoDayModal({
               </button>
             </div>
           )}
-
-          {!auditWorkspaceMode ? auditSummaryBar : null}
 
           {/* Ranking panel */}
           {isEventsMode && rankOpen && rankings && (
@@ -5467,12 +5484,12 @@ export function HistoricoDayModal({
             <table
               className={`hdm-table${collaboratorDetailMode ? " hdm-collab-detail-table" : ""}${auditWorkspaceMode ? " hdm-audit-workspace-table" : ""}`}
               style={collaboratorDetailMode ? {
-                minWidth: Math.max(auditWorkspaceMode ? 1500 : 1380, collabTableMinWidth),
+                minWidth: Math.max(auditWorkspaceMode ? 1500 : 980, showCollabAuditDetails ? collabTableMinWidth : 980),
                 "--hdm-col-data": `${collabColWidths.data}px`,
                 "--hdm-col-evento": `${collabColWidths.evento}px`,
                 "--hdm-col-horas": `${collabColWidths.horas}px`,
                 "--hdm-col-horario": `${collabColWidths.horario}px`,
-                "--hdm-col-auditoria": `${collabColWidths.auditoria}px`,
+                ...(showCollabAuditDetails ? { "--hdm-col-auditoria": `${collabColWidths.auditoria}px` } : {}),
               } : { width: modalTableWidth, minWidth: "100%" }}
             >
               {collaboratorDetailMode ? (
@@ -5481,7 +5498,7 @@ export function HistoricoDayModal({
                   <col style={{ width: collabColWidths.evento }} />
                   <col style={{ width: collabColWidths.horas }} />
                   <col style={{ width: collabColWidths.horario }} />
-                  <col style={{ width: collabColWidths.auditoria }} />
+                  {showCollabAuditDetails ? <col style={{ width: collabColWidths.auditoria }} /> : null}
                 </colgroup>
               ) : (
                 <colgroup>
@@ -5564,7 +5581,7 @@ export function HistoricoDayModal({
                     renderCollaboratorDetailRows(groupTree)
                   ) : (
                     <tr>
-                      <td colSpan={5} className="hdm-empty">
+                      <td colSpan={collabDetailColSpan} className="hdm-empty">
                         Preparando agrupamento...
                       </td>
                     </tr>
