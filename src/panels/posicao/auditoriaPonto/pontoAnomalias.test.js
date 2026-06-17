@@ -417,6 +417,37 @@ test("detecta adicional noturno nao classificado", () => {
   assert.equal(hasCode(r, "ADICIONAL_NOTURNO_NAO_CLASSIFICADO"), true);
 });
 
+test("considera periodo noturno somente apos 22:00", () => {
+  const ateVinteDuas = analisarAnomaliasPonto({
+    horario: "13:30 18:00 19:00 22:00",
+    marcacao: "13:22 20:29 21:30 22:00",
+    horas: 450,
+    evento: "HORAS NORMAIS",
+  });
+  const aposVinteDuas = analisarAnomaliasPonto({
+    horario: "13:30 18:00 19:00 22:00",
+    marcacao: "13:22 20:29 21:30 22:01",
+    horas: 450,
+    evento: "HORAS NORMAIS",
+  });
+  assert.equal(hasCode(ateVinteDuas, "ADICIONAL_NOTURNO_NAO_CLASSIFICADO"), false);
+  assert.equal(hasCode(aposVinteDuas, "ADICIONAL_NOTURNO_NAO_CLASSIFICADO"), true);
+});
+
+test("nao acusa adicional noturno nao classificado quando ha evento noturno no mesmo dia", () => {
+  const r = analisarAnomaliasPonto({
+    horario: "07:00 13:00 14:00 17:00",
+    marcacao: "09:56 13:00 14:00 22:18",
+    horas: 540,
+    evento: "HORAS NORMAIS",
+    sameDayEvents: [
+      { cod: "15", evento: "ADICIONAL NOTURNO" },
+      { cod: "123N", evento: "EVENTO DE HE NOTURNA" },
+    ],
+  });
+  assert.equal(hasCode(r, "ADICIONAL_NOTURNO_NAO_CLASSIFICADO"), false);
+});
+
 test("detecta hora extra acima do limite", () => {
   const r = analisarAnomaliasPonto({
     horario: "18:00 21:00",
@@ -630,6 +661,87 @@ test("nao acusa duplicidade quando horas normais coexistem com evento de refeica
   assert.equal(hasCode(r, "DUPLICIDADE_EVENTO_REMUNERADO"), false);
 });
 
+test("nao acusa desvio planejado de refeicao quando apontamento ja registra atraso refeicao", () => {
+  const eventosDia = [
+    { evento: "1045 - ATRASO REFEICAO" },
+    { evento: "2 - HORAS NORMAIS" },
+    { evento: "6HSI - MAIS DE 6 HORAS SEM REFEICAO" },
+  ];
+  const r = analisarAnomaliasPonto({
+    horario: "06:00 10:00 11:00 15:00",
+    marcacao: "06:04 12:14 13:26 15:01",
+    horas: 468,
+    evento: "2 - HORAS NORMAIS",
+    eventosDia,
+  });
+  assert.equal(hasCode(r, "DESVIO_PLANEJADO"), false);
+});
+
+test("nao acusa divergencia de horas normais quando apontamento ja registra falta de marcacao", () => {
+  const eventosDia = [
+    { evento: "FM - FALTA DE MARCACAO" },
+    { evento: "2 - HORAS NORMAIS" },
+  ];
+  const r = analisarAnomaliasPonto({
+    horario: "06:00 10:00 11:00 15:00",
+    marcacao: "FM 12:01 11:01 15:00",
+    horas: 480,
+    evento: "2 - HORAS NORMAIS",
+    eventosDia,
+  });
+  assert.equal(hasCode(r, "DIVERGENCIA_HORAS_EVENTO"), false);
+  assert.equal(hasCode(r, "DESVIO_PLANEJADO"), false);
+});
+
+test("nao acusa duplicidade quando horas normais coexistem com evento de atrasos do apontamento", () => {
+  const eventosDia = [
+    { evento: "24 - ATRASOS" },
+    { evento: "2 - HORAS NORMAIS" },
+  ];
+  const r = analisarAnomaliasPonto({
+    horario: "06:00 10:00 11:00 15:00",
+    marcacao: "08:18 13:18 14:22 15:06",
+    horas: 342,
+    evento: "2 - HORAS NORMAIS",
+    eventosDia,
+  });
+  assert.equal(hasCode(r, "DUPLICIDADE_EVENTO_REMUNERADO"), false);
+  assert.equal(hasCode(r, "DESVIO_PLANEJADO"), false);
+});
+
+test("nao acusa desvio planejado de refeicao quando apontamento ja registra intervalo menor que 1h", () => {
+  const eventosDia = [
+    { evento: "2 - HORAS NORMAIS" },
+    { evento: "1H - INTERVALO MENOR QUE 1H" },
+  ];
+  const r = analisarAnomaliasPonto({
+    horario: "06:00 10:00 11:00 15:00",
+    marcacao: "06:01 11:19 12:15 15:00",
+    horas: 480,
+    evento: "2 - HORAS NORMAIS",
+    eventosDia,
+  });
+  assert.equal(hasCode(r, "DESVIO_PLANEJADO"), false);
+});
+
+test("nao acusa divergencia de horas normais quando banco de horas credito explica diferenca", () => {
+  const eventosDia = [
+    { evento: "BHC - BANCO DE HORAS CREDITO" },
+    { evento: "2 - HORAS NORMAIS" },
+    { evento: "1H - INTERVALO MENOR QUE 1H" },
+    { evento: "JT - TOTAL DE JORNADA" },
+  ];
+  const r = analisarAnomaliasPonto({
+    horario: "07:00 12:00 13:00 17:00",
+    marcacao: "07:03 12:42 13:31 17:10",
+    horas: 540,
+    evento: "2 - HORAS NORMAIS",
+    eventosDia,
+  });
+  assert.equal(hasCode(r, "DIVERGENCIA_HORAS_EVENTO"), false);
+  assert.equal(hasCode(r, "DESVIO_PLANEJADO"), false);
+});
+
 test("detecta sobreposicao de eventos no mesmo dia", () => {
   const r = analisarAnomaliasPonto({
     horario: "08:00 12:00",
@@ -707,8 +819,8 @@ test("detecta feriado local sem classificacao", () => {
 
 test("detecta prorrogacao noturna nao classificada", () => {
   const r = analisarAnomaliasPonto({
-    horario: "22:00 06:00",
-    marcacao: "22:00 06:00",
+    horario: "22:01 06:00",
+    marcacao: "22:01 06:00",
     horas: 480,
     evento: "HORAS NORMAIS",
   });

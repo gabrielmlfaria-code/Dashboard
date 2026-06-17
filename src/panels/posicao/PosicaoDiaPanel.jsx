@@ -1,4 +1,5 @@
 ﻿import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -61,6 +62,13 @@ import {
   removePosicaoStoredValue,
   savePosicaoStoredValue,
 } from "./posicaoStorage.js";
+import { fmtHMReadable } from "./utils/timeFormat.js";
+
+const RadarTrabalhistaShell = lazy(() =>
+  import("./radar-trabalhista/RadarTrabalhistaShell.jsx").then((m) => ({
+    default: m.RadarTrabalhistaShell,
+  })),
+);
 
 const INITIAL_DATA_LOAD_TIMEOUT_MS = 3_000;
 
@@ -840,6 +848,53 @@ export function PosicaoDiaPanel() {
     } catch {}
   }, [theme]);
   const toggleTheme = useCallback(() => setTheme((t) => (t === "dark" ? "light" : "dark")), []);
+  const [radarWorkspaceOpen, setRadarWorkspaceOpen] = useState(false);
+  const [radarWorkspaceRequest, setRadarWorkspaceRequest] = useState({
+    page: "visao",
+    filter: null,
+    seq: 0,
+  });
+  const openRadarWorkspace = useCallback((options = {}) => {
+    setRadarWorkspaceRequest((prev) => ({
+      page: options.page || prev.page || "visao",
+      filter: options.filter || null,
+      openPlaybook: Boolean(options.openPlaybook),
+      embeddedPlaybookOnly: Boolean(options.embeddedPlaybookOnly),
+      evento: options.evento || "",
+      eventoOriginal: options.eventoOriginal || "",
+      codigo: options.codigo || "",
+      data: options.data || "",
+      colaborador: options.colaborador || "",
+      matricula: options.matricula || "",
+      seq: (prev.seq || 0) + 1,
+    }));
+    setRadarWorkspaceOpen(true);
+  }, []);
+  const openRadarToCct = useCallback(() => {
+    openRadarWorkspace({ page: "cct" });
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("pb-show-cct"));
+    }, 100);
+  }, [openRadarWorkspace]);
+  useEffect(() => {
+    window.__pbOpenRadarWorkspace = (options = {}) => openRadarWorkspace(options);
+    const onOpenRadar = (event) => {
+      const detail = event?.detail || {};
+      const colaborador = detail.colaborador || "";
+      openRadarWorkspace({
+        ...detail,
+        filter: colaborador ? { field: "colaborador", value: colaborador } : detail.filter || null,
+      });
+    };
+    const onRadarCct = () => openRadarToCct();
+    window.addEventListener("pb-open-radar", onOpenRadar);
+    window.addEventListener("pb-open-radar-cct", onRadarCct);
+    return () => {
+      window.removeEventListener("pb-open-radar", onOpenRadar);
+      window.removeEventListener("pb-open-radar-cct", onRadarCct);
+      if (window.__pbOpenRadarWorkspace) delete window.__pbOpenRadarWorkspace;
+    };
+  }, [openRadarToCct, openRadarWorkspace]);
 
   // Configuração: força de trabalho prevista por departamento
   const [forcaPrevistaDeptoMap, setForcaPrevistaDeptoMap] = useState(() => {
@@ -3216,7 +3271,7 @@ export function PosicaoDiaPanel() {
                             "s",
                             6000,
                           );
-                          window.dispatchEvent(new CustomEvent("pb-show-cct"));
+                          openRadarToCct();
                         } else if (res.errors?.length) {
                           Toast.show(res.errors[0], "e", 8000);
                         } else {
@@ -3240,7 +3295,7 @@ export function PosicaoDiaPanel() {
                   <button
                     type="button"
                     className="btn"
-                    onClick={() => window.dispatchEvent(new CustomEvent("pb-open-radar-cct"))}
+                    onClick={openRadarToCct}
                   >
                     Abrir CCT no Radar
                   </button>
@@ -3624,6 +3679,9 @@ export function PosicaoDiaPanel() {
                     ? setPosListEmbeddedCount
                     : undefined
                 }
+                onOpenRadar={(detail) => {
+                  openRadarWorkspace({ ...detail, embeddedPlaybookOnly: true });
+                }}
                 onClose={() => setPosListModalOpen(false)}
                 theme={theme}
               />
@@ -3631,6 +3689,42 @@ export function PosicaoDiaPanel() {
             document.getElementById("posListCanvasWrap"),
           )
         : null}
+      {radarWorkspaceOpen &&
+        createPortal(
+          <div
+            className={`rt-overlay${radarWorkspaceRequest?.embeddedPlaybookOnly ? " rt-overlay--playbook" : ""}`}
+            data-theme={theme}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Radar trabalhista"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setRadarWorkspaceOpen(false);
+            }}
+          >
+            <div className="rt-overlay-panel" onMouseDown={(e) => e.stopPropagation()}>
+              <Suspense fallback={<div className="rt-overlay-loading">Carregando Radar trabalhista...</div>}>
+                <RadarTrabalhistaShell
+                  onClose={() => setRadarWorkspaceOpen(false)}
+                  theme={theme}
+                  histRows={histRowsForPeriodo}
+                  periodLabel={
+                    periodoApuracao?.de || periodoApuracao?.ate
+                      ? `${periodoApuracao?.de || ""} - ${periodoApuracao?.ate || periodoApuracao?.de || ""}`
+                      : ""
+                  }
+                  histDateFrom={periodoApuracao?.de || ""}
+                  histDateTo={periodoApuracao?.ate || periodoApuracao?.de || ""}
+                  onToggleTheme={toggleTheme}
+                  customPeriod={Boolean(periodoApuracao?.de || periodoApuracao?.ate)}
+                  periodoApuracao={periodoApuracao}
+                  fmtHMReadable={fmtHMReadable}
+                  initialRequest={radarWorkspaceRequest}
+                />
+              </Suspense>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

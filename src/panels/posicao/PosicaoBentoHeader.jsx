@@ -39,6 +39,7 @@ import { RadarKpiModal } from "./RadarKpiModal.jsx";
 import { RadarHoursFace } from "./RadarHoursFace.jsx";
 import { ConsecFaltasModal } from "./ConsecFaltasModal.jsx";
 import { HistoricoDayModal } from "./HistoricoDayModal.jsx";
+import { AuditoriaPontoFastModal } from "./AuditoriaPontoFastModal.jsx";
 import {
   AuditoriaPontoParamsPanel as SharedAuditoriaPontoParamsPanel,
   normalizeAuditoriaParamsConfig as normalizeSharedAuditoriaParamsConfig,
@@ -282,6 +283,7 @@ const fmtHMMilhar = (mins) => {
 const PB_AUDITORIA_PARAMS_KEY = "mp_auditoria_ponto_params";
 const PB_AUDITORIA_REVIEWS_KEY = "mp_auditoria_ponto_reviews_v1";
 const PB_AUDIT_SEVERITY_ORDER = { critica: 4, alta: 3, media: 2, baixa: 1, ok: 0 };
+const PB_AUDIT_ACTIONABLE_TREATMENTS = new Set(["acao", "revisao_manual"]);
 
 const AUDITORIA_PARAM_FIELDS = [
   { key: "toleranciaMinutos", label: "Tolerancia geral de desvio", suffix: "min", desc: "Margem aceita entre horario planejado e marcacao antes de abrir anomalia de desvio." },
@@ -374,6 +376,19 @@ const stripAuditHorarioCode = (value) =>
 const splitAuditTimeTokens = (value) => stripAuditHorarioCode(value).split(/\s+/).filter(Boolean);
 
 const auditEventDateKey = (ev) => normDateKey(ev?.data || ev?.date || ev?.data_referencia);
+const normalizeAuditText = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+const dashboardAuditSameDayKey = (ev) => {
+  const dateKey = auditEventDateKey(ev);
+  if (!dateKey) return "";
+  const personKey = String(ev?.mat || "").trim() || normalizeAuditText(ev?.nome || "");
+  return personKey ? `${personKey}|${dateKey}` : "";
+};
 
 const fmtAuditMinutes = (min) => {
   const v = Math.max(0, Math.round(Number(min) || 0));
@@ -392,6 +407,19 @@ const makeDashboardAuditReviewKey = (ev, audit) =>
     .map((part) => String(part || "").replace(/\s+/g, " ").trim())
     .join("|");
 
+const isDashboardAuditActionable = (audit) => {
+  if (!audit?.memoria || audit.severidade === "ok") return false;
+  if (audit.passivelAcao != null) return Boolean(audit.passivelAcao);
+  return PB_AUDIT_ACTIONABLE_TREATMENTS.has(audit.tratamentoRegra || "acao");
+};
+
+const getDashboardAuditDisplayReview = (audit, review) => {
+  if (!isDashboardAuditActionable(audit) && (review?.status || "pendente") === "pendente") {
+    return { ...(review || {}), status: "sem_acao" };
+  }
+  return review || {};
+};
+
 function buildDashboardAuditoriaPontoSummary(histRows, params, reviews = {}) {
   const events = [];
   for (const row of Array.isArray(histRows) ? histRows : []) {
@@ -401,10 +429,20 @@ function buildDashboardAuditoriaPontoSummary(histRows, params, reviews = {}) {
   }
 
   const byColab = new Map();
+  const sameDayEventsMap = new Map();
   for (const ev of events) {
     const key = String(ev?.mat || ev?.nome || "__sem_colaborador__");
     if (!byColab.has(key)) byColab.set(key, []);
     byColab.get(key).push(ev);
+    const sameDayKey = dashboardAuditSameDayKey(ev);
+    if (sameDayKey) {
+      if (!sameDayEventsMap.has(sameDayKey)) sameDayEventsMap.set(sameDayKey, []);
+      sameDayEventsMap.get(sameDayKey).push({
+        cod: ev?.cod || ev?.codigo || "",
+        evento: ev?.evento || ev?.situacaoDesc || "",
+        _cat: ev?._cat || ev?.categoria || "",
+      });
+    }
   }
 
   const summary = {
@@ -444,6 +482,7 @@ function buildDashboardAuditoriaPontoSummary(histRows, params, reviews = {}) {
       const audit = analisarAnomaliasPonto(
         {
           ...ev,
+          sameDayEvents: sameDayEventsMap.get(dashboardAuditSameDayKey(ev)) || [],
           previousData: ordered[idx - 1] ? auditEventDateKey(ordered[idx - 1]) : "",
           previousMarcacao: ordered[idx - 1]?.marcacao || "",
           pontoBritanicoAssinatura: assinatura,
@@ -454,16 +493,17 @@ function buildDashboardAuditoriaPontoSummary(histRows, params, reviews = {}) {
       const sev = audit?.severidade || "ok";
       summary[sev] = (summary[sev] || 0) + 1;
       if (!audit?.memoria || sev === "ok") return;
-      const review = reviews[makeDashboardAuditReviewKey(ev, audit)] || {};
+      const review = getDashboardAuditDisplayReview(audit, reviews[makeDashboardAuditReviewKey(ev, audit)] || {});
       const status = review.status || "pendente";
+      const actionable = isDashboardAuditActionable(audit);
       const depto = String(ev?.depto || ev?.departamento || ev?.depto_desc || "Sem departamento").trim() || "Sem departamento";
       const current = deptos.get(depto) || { label: depto, total: 0, critica: 0, alta: 0, pendente: 0 };
       current.total += 1;
       current[sev] = (current[sev] || 0) + 1;
-      if (status === "pendente") current.pendente += 1;
+      if (status === "pendente" && actionable) current.pendente += 1;
       deptos.set(depto, current);
       summary.total += 1;
-      if (status === "pendente") summary.pendente += 1;
+      if (status === "pendente" && actionable) summary.pendente += 1;
       else summary.tratado += 1;
       if (status === "ajuste") summary.ajuste += 1;
       const ranked = {
@@ -4115,6 +4155,7 @@ export function PosicaoBentoHeader({
       page: options.page || prev.page || "visao",
       filter: options.filter || null,
       openPlaybook: Boolean(options.openPlaybook),
+      embeddedPlaybookOnly: Boolean(options.embeddedPlaybookOnly),
       evento: options.evento || "",
       eventoOriginal: options.eventoOriginal || "",
       codigo: options.codigo || "",
@@ -4123,7 +4164,9 @@ export function PosicaoBentoHeader({
       matricula: options.matricula || "",
       seq: (prev.seq || 0) + 1,
     }));
-    setAuditoriaWorkspaceOpen(false);
+    if (!options.openPlaybook) {
+      setAuditoriaWorkspaceOpen(false);
+    }
     setRadarWorkspaceOpen(true);
     setHistHighlightCol(null);
     setHistMetricFilter(null);
@@ -4152,6 +4195,15 @@ export function PosicaoBentoHeader({
       }, 200);
     }, 100);
   }, []);
+
+  useEffect(() => {
+    window.__pbOpenRadarWorkspace = (options = {}) => {
+      openRadarWorkspace(options);
+    };
+    return () => {
+      if (window.__pbOpenRadarWorkspace) delete window.__pbOpenRadarWorkspace;
+    };
+  }, [openRadarWorkspace]);
 
   useEffect(() => {
     if (!histDetailOpen) setHistHighlightCol(null);
@@ -5674,7 +5726,6 @@ export function PosicaoBentoHeader({
     const onOpenRadar = (event) => {
       const page = event?.detail?.page || "eventos";
       const colaborador = event?.detail?.colaborador || "";
-      closeChartDayModal();
       openRadarWorkspace({
         page,
         filter: colaborador ? { field: "colaborador", value: colaborador } : null,
@@ -5689,7 +5740,7 @@ export function PosicaoBentoHeader({
     };
     window.addEventListener("pb-open-radar", onOpenRadar);
     return () => window.removeEventListener("pb-open-radar", onOpenRadar);
-  }, [closeChartDayModal, openRadarWorkspace]);
+  }, [openRadarWorkspace]);
 
   const parseBancoHorasFromWorkbook = useCallback((wb, XLSX, fileName = "") => {
     if (!wb || !XLSX) return { parsed: null, diagnosis: null };
@@ -7997,7 +8048,22 @@ export function PosicaoBentoHeader({
         onReset={resetAuditoriaPontoParams}
       />
 
-      {chartDayModal && (
+      {chartDayModal?.initialAuditOnly ? (
+        <AuditoriaPontoFastModal
+          open={Boolean(chartDayModal)}
+          label={chartDayModal.label}
+          events={chartDayModal.events}
+          params={auditoriaPontoParams}
+          eventsDateFrom={chartDayModal.eventsDateFrom || histDateFrom}
+          eventsDateTo={chartDayModal.eventsDateTo || histDateTo}
+          onClose={closeChartDayModal}
+          onOpenParams={openAuditoriaPontoParams}
+          onOpenRadar={(detail) => {
+            openRadarWorkspace({ ...detail, embeddedPlaybookOnly: true });
+          }}
+          theme={theme}
+        />
+      ) : chartDayModal ? (
         <HistoricoDayModal
           key={chartDayModal.date}
           date={chartDayModal.modalDate || chartDayModal.date}
@@ -8020,12 +8086,11 @@ export function PosicaoBentoHeader({
           hasExtras={histRows.some((r) => r.horas_extras != null || r.extras != null)}
           onClose={closeChartDayModal}
           onOpenRadar={(detail) => {
-            closeChartDayModal();
-            openRadarWorkspace(detail);
+            openRadarWorkspace({ ...detail, embeddedPlaybookOnly: true });
           }}
           theme={theme}
         />
-      )}
+      ) : null}
 
       <ConsecFaltasModal
         open={consecFaltasOpen}
@@ -8038,7 +8103,7 @@ export function PosicaoBentoHeader({
       {radarWorkspaceOpen &&
         createPortal(
           <div
-            className="rt-overlay"
+            className={`rt-overlay${radarWorkspaceRequest?.embeddedPlaybookOnly ? " rt-overlay--playbook" : ""}`}
             data-theme={theme}
             role="dialog"
             aria-modal="true"

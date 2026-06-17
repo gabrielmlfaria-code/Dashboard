@@ -263,6 +263,7 @@ const HDM_MULTI_GROUP_MAX = 80000;
 const HDM_COLLAB_GROUP_INITIAL_LIMIT = 80;
 const HDM_AUDIT_COLLAB_GROUP_INITIAL_LIMIT = 24;
 const HDM_AUDIT_FILTER_SCAN_LIMIT = 1200;
+const HDM_AUDIT_FILTER_STABLE_WINDOW = 180;
 const HDM_AUDIT_SUMMARY_FULL_LIMIT = 2500;
 
 function addDaysIso(iso, n) {
@@ -335,6 +336,14 @@ const AUDIT_RULE_TREATMENTS = [
   { id: "revisao_manual", label: "Revisão manual" },
 ];
 const AUDIT_ACTIONABLE_TREATMENTS = new Set(["acao", "revisao_manual"]);
+const AUDIT_SEVERITY_LABELS = {
+  todos: "Todos",
+  critica: "Críticas",
+  alta: "Altas",
+  media: "Médias",
+  baixa: "Baixas",
+  ok: "OK",
+};
 
 function isAuditActionable(audit) {
   if (!audit?.memoria || audit.severidade === "ok") return false;
@@ -372,6 +381,39 @@ function useDebouncedValue(value, delay = 250) {
   }, [value, delay]);
   return debounced;
 }
+
+const HdmSearchInput = React.memo(function HdmSearchInput({
+  value,
+  onCommit,
+  delay = 260,
+  className,
+  placeholder,
+  autoFocus,
+}) {
+  const [draft, setDraft] = useState(value || "");
+  useEffect(() => {
+    setDraft(value || "");
+  }, [value]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (draft !== (value || "")) onCommit(draft);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [draft, value, delay, onCommit]);
+  return (
+    <input
+      type="search"
+      className={className}
+      placeholder={placeholder}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") onCommit(draft);
+      }}
+      autoFocus={autoFocus}
+    />
+  );
+});
 
 function normalizeSearchText(value) {
   return String(value ?? "")
@@ -549,6 +591,20 @@ function getColFilterDisplay(val, col) {
     if (!Number.isNaN(n)) return fmtMin(n);
   }
   return String(val);
+}
+
+function summarizeHdmFilter(entry, col) {
+  const { values, cond } = normalizeHdmColFilter(entry);
+  const parts = [];
+  if (values instanceof Set) {
+    const list = [...values].map((value) => getColFilterDisplay(value, col));
+    parts.push(list.length <= 2 ? list.join(", ") : `${list.length} valores`);
+  }
+  if (cond?.value) {
+    const op = HDM_FILTER_OPS.find((item) => item.id === cond.op)?.label || "Contém";
+    parts.push(`${op} ${cond.value}`);
+  }
+  return parts.join(" · ");
 }
 function absIdx(e) {
   const abs = (e.hrsAuse || 0) + (e.hrsJust || 0);
@@ -971,8 +1027,10 @@ export function HistoricoDayModal({
     if (isPosEmbedded) return posEmbeddedSaved.search || "";
     return isEventsMode ? _hdmSaved.evtSearch : _hdmSaved.empSearch;
   });
-  const deferredSearch = useDeferredValue(search);
-  const debouncedSearch = useDebouncedValue(deferredSearch, isEventsMode ? 300 : 180);
+  const debouncedSearch = search;
+  const commitSearch = useCallback((value) => {
+    startTransition(() => setSearch(value));
+  }, []);
 
   /* date range (events mode) — use table range if available, else show all dates (no filter) */
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -1060,6 +1118,7 @@ export function HistoricoDayModal({
   const [auditQuestion, setAuditQuestion] = useState("resumo");
   const [auditParamsOpen, setAuditParamsOpen] = useState(Boolean(initialAuditParamsOpen));
   const [auditSeverityFilter, setAuditSeverityFilter] = useState("todos");
+  const [auditSummaryProcessing, setAuditSummaryProcessing] = useState("");
   const [auditOnly, setAuditOnly] = useState(Boolean(initialAuditOnly));
   const [auditReviewStatusFilter, setAuditReviewStatusFilter] = useState("todos");
   const [auditCriticalPendingOnly, setAuditCriticalPendingOnly] = useState(false);
@@ -1164,6 +1223,16 @@ export function HistoricoDayModal({
     if (isPosEmbedded) return null;
     return initialPillFilter ?? _hdmSaved.evtPillFilter ?? null;
   });
+  const [pillBusy, setPillBusy] = useState("");
+  const applyPillFilter = useCallback((nextFilter) => {
+    const busyKey = nextFilter || "todos";
+    setPillBusy(busyKey);
+    window.requestAnimationFrame(() => {
+      startTransition(() => {
+        setPillFilter((current) => (current === nextFilter ? null : nextFilter));
+      });
+    });
+  }, []);
 
   useEffect(() => {
     if (isPosEmbedded) return;
@@ -1175,6 +1244,7 @@ export function HistoricoDayModal({
     setGroupBy([]);
     setCollapsed(new Set());
     setPillFilter(null);
+    setPillBusy("");
   }, [isPosEmbedded]);
 
   useEffect(() => {
@@ -1343,7 +1413,7 @@ export function HistoricoDayModal({
       persistPosEmbeddedBucket(posListKey, {
         sortCol,
         sortDir,
-        search,
+        search: debouncedSearch,
         colOrder,
         visibleCols: [...visibleCols],
         colCatalog: defaultColIds,
@@ -1357,7 +1427,7 @@ export function HistoricoDayModal({
     if (isEventsMode) {
       _hdmSaved.evtSortCol = sortCol;
       _hdmSaved.evtSortDir = sortDir;
-      _hdmSaved.evtSearch = search;
+      _hdmSaved.evtSearch = debouncedSearch;
       _hdmSaved.evtGroupBy = groupBy;
       if (!lockColumnLayout) {
         _hdmSaved.evtColOrder = colOrder;
@@ -1370,7 +1440,7 @@ export function HistoricoDayModal({
     } else {
       _hdmSaved.empSortCol = sortCol;
       _hdmSaved.empSortDir = sortDir;
-      _hdmSaved.empSearch = search;
+      _hdmSaved.empSearch = debouncedSearch;
       _hdmSaved.empGroupBy = groupBy;
       _hdmSaved.empColOrder = colOrder;
       _hdmSaved.empVisibleCols = [...visibleCols];
@@ -1382,7 +1452,7 @@ export function HistoricoDayModal({
   }, [
     sortCol,
     sortDir,
-    search,
+    debouncedSearch,
     groupBy,
     colOrder,
     visibleCols,
@@ -1419,6 +1489,7 @@ export function HistoricoDayModal({
   const eventMeta = useMemo(
     () =>
       events0.map((ev) => ({
+        personSearch: normalizeSearchText([ev.nome, ev.mat].filter(Boolean).join(" ")),
         search: normalizeSearchText([
           ev.nome,
           ev.mat,
@@ -1449,6 +1520,49 @@ export function HistoricoDayModal({
         sk: buildEventSortKeys(ev),
       })),
     [events0],
+  );
+
+  const eventPersonSearchIndex = useMemo(() => {
+    if (!isEventsMode || !events0.length) return [];
+    const byPerson = new Map();
+    events0.forEach((ev, idx) => {
+      const personKey = String(ev?.mat || "").trim() || normalizeSearchText(ev?.nome || "");
+      const key = personKey || `__row_${idx}`;
+      let entry = byPerson.get(key);
+      if (!entry) {
+        entry = { search: eventMeta[idx]?.personSearch || "", indices: [] };
+        byPerson.set(key, entry);
+      } else if (!entry.search && eventMeta[idx]?.personSearch) {
+        entry.search = eventMeta[idx].personSearch;
+      }
+      entry.indices.push(idx);
+    });
+    return [...byPerson.values()];
+  }, [isEventsMode, events0, eventMeta]);
+
+  const eventCategoryIndex = useMemo(() => {
+    if (!isEventsMode || !events0.length) return new Map();
+    const index = new Map();
+    events0.forEach((ev, idx) => {
+      const cat = ev?._cat || "";
+      if (!cat) return;
+      if (!index.has(cat)) index.set(cat, []);
+      index.get(cat).push(idx);
+    });
+    return index;
+  }, [isEventsMode, events0]);
+
+  const getPersonSearchCandidateIndices = useCallback(
+    (query) => {
+      const q = normalizeSearchText(query);
+      if (!q || q.length < 2 || !eventPersonSearchIndex.length) return null;
+      const matches = [];
+      for (const entry of eventPersonSearchIndex) {
+        if (searchTextMatches(entry.search, q)) matches.push(...entry.indices);
+      }
+      return matches.length ? matches : null;
+    },
+    [eventPersonSearchIndex],
   );
 
 
@@ -1485,6 +1599,7 @@ export function HistoricoDayModal({
         const indices = eventsDateIndex && !isSheetImportMode
           ? collectEventIndicesInRange(eventsDateIndex, fromKey, toKey)
           : null;
+        const personCandidateIndices = q ? getPersonSearchCandidateIndices(q) : null;
         const collectAuditCandidates = (ignoreTextSearch = false) => {
           const out = [];
           const scan = (idx) => {
@@ -1507,6 +1622,8 @@ export function HistoricoDayModal({
           };
           if (indices) {
             for (const idx of indices) scan(idx);
+          } else if (personCandidateIndices && !ignoreTextSearch) {
+            for (const idx of personCandidateIndices) scan(idx);
           } else {
             for (let idx = 0; idx < events0.length; idx++) scan(idx);
           }
@@ -1520,13 +1637,20 @@ export function HistoricoDayModal({
           auditCandidateIndices = auditCandidateIndices.slice(0, HDM_AUDIT_FILTER_SCAN_LIMIT);
         }
         const values = new Set();
+        let rowsSinceLastNewRule = 0;
         for (let pos = 0; pos < auditCandidateIndices.length; pos++) {
           const idx = auditCandidateIndices[pos];
           const ev = events0[idx];
           if (!ev) continue;
           const previousEv = pos > 0 ? events0[auditCandidateIndices[pos - 1]] : null;
           const audit = getEventAudit(ev, previousEv);
-          getAuditRuleCodes(audit).forEach((code) => values.add(code));
+          let foundNewRule = false;
+          getAuditRuleCodes(audit).forEach((code) => {
+            if (!values.has(code)) foundNewRule = true;
+            values.add(code);
+          });
+          rowsSinceLastNewRule = foundNewRule ? 0 : rowsSinceLastNewRule + 1;
+          if (values.size >= 4 && rowsSinceLastNewRule >= HDM_AUDIT_FILTER_STABLE_WINDOW) break;
         }
         const result = [...values].sort((a, b) =>
           COLLATOR_PT.compare(getAuditRuleLabel(a), getAuditRuleLabel(b)),
@@ -1588,6 +1712,7 @@ export function HistoricoDayModal({
       debouncedSearch,
       posListKey,
       auditParamsCacheKey,
+      getPersonSearchCandidateIndices,
     ],
   );
 
@@ -1683,6 +1808,8 @@ export function HistoricoDayModal({
     const indices = useDateIndex
       ? collectEventIndicesInRange(eventsDateIndex, fromKey, toKey)
       : null;
+    const personCandidateIndices = q ? getPersonSearchCandidateIndices(q) : null;
+    const categoryCandidateIndices = pillFilter ? eventCategoryIndex.get(pillFilter) || [] : null;
     const collect = (ignoreTextSearch = false) => {
       const out = [];
       const scan = (idx) => {
@@ -1702,8 +1829,12 @@ export function HistoricoDayModal({
         }
         out.push(idx);
       };
-      if (indices) {
+      if (categoryCandidateIndices) {
+        for (const idx of categoryCandidateIndices) scan(idx);
+      } else if (indices) {
         for (const idx of indices) scan(idx);
+      } else if (personCandidateIndices && !ignoreTextSearch) {
+        for (const idx of personCandidateIndices) scan(idx);
       } else {
         for (let idx = 0; idx < events0.length; idx++) scan(idx);
       }
@@ -1716,6 +1847,7 @@ export function HistoricoDayModal({
     isEventsMode,
     events0,
     eventsDateIndex,
+    eventCategoryIndex,
     eventMeta,
     debouncedSearch,
     appliedDateFrom,
@@ -1724,6 +1856,7 @@ export function HistoricoDayModal({
     pillFilter,
     posListKey,
     stackHrsMrc,
+    getPersonSearchCandidateIndices,
   ]);
 
   const filteredEvents = useMemo(
@@ -1740,15 +1873,16 @@ export function HistoricoDayModal({
       String(posListKey || "") === "abonos_efetuados";
     const fromKey = normDateKey(appliedDateFrom);
     const toKey = normDateKey(appliedDateTo);
+    const personCandidateIndices = q ? getPersonSearchCandidateIndices(q) : null;
     let total = 0;
-    for (let idx = 0; idx < events0.length; idx++) {
+    const scan = (idx) => {
       const ev = events0[idx];
       const { search: evSearch, normDate: evDate } = eventMeta[idx] || {};
       if (!isSheetImportMode) {
-        if (fromKey && evDate && evDate < fromKey) continue;
-        if (toKey && evDate && evDate > toKey) continue;
+        if (fromKey && evDate && evDate < fromKey) return;
+        if (toKey && evDate && evDate > toKey) return;
       }
-      if (q && !searchTextMatches(evSearch, q)) continue;
+      if (q && !searchTextMatches(evSearch, q)) return;
       let pass = true;
       for (const [col, filterEntry] of Object.entries(colFilters)) {
         if (!isHdmColFilterActive(filterEntry)) continue;
@@ -1760,6 +1894,11 @@ export function HistoricoDayModal({
         }
       }
       if (pass) total++;
+    };
+    if (personCandidateIndices) {
+      for (const idx of personCandidateIndices) scan(idx);
+    } else {
+      for (let idx = 0; idx < events0.length; idx++) scan(idx);
     }
     return total;
   }, [
@@ -1772,6 +1911,7 @@ export function HistoricoDayModal({
     colFilters,
     posListKey,
     stackHrsMrc,
+    getPersonSearchCandidateIndices,
   ]);
 
   const sortedEventIndices = useMemo(() => {
@@ -1787,6 +1927,8 @@ export function HistoricoDayModal({
     deferredSortCol,
     deferredSortDir,
   ]);
+  const deferredFilteredEventIndices = useDeferredValue(filteredEventIndices);
+  const deferredSortedEventIndices = useDeferredValue(sortedEventIndices);
 
   const evtTotalsAll = useMemo(() => {
     if (isApiMode) {
@@ -1948,9 +2090,7 @@ export function HistoricoDayModal({
   const collaboratorAuditSummary = useMemo(() => {
     if (!isEventsMode || isApiMode || isPosEmbedded || groupBy[0] !== "mat") return null;
     const byColab = new Map();
-    const summaryIndices = filteredEventIndices.length > HDM_AUDIT_SUMMARY_FULL_LIMIT
-      ? filteredEventIndices.slice(0, HDM_AUDIT_SUMMARY_FULL_LIMIT)
-      : filteredEventIndices;
+    const summaryIndices = deferredFilteredEventIndices;
     for (const idx of summaryIndices) {
       const ev = events0[idx];
       if (!ev) continue;
@@ -1983,7 +2123,7 @@ export function HistoricoDayModal({
       });
     }
     return counts;
-  }, [isEventsMode, isApiMode, isPosEmbedded, groupBy, filteredEventIndices, events0, auditParams]);
+  }, [isEventsMode, isApiMode, isPosEmbedded, groupBy, deferredFilteredEventIndices, events0, auditParams]);
 
   const empTotalsAll = useMemo(() => grpTotals(filteredEmps), [filteredEmps]);
 
@@ -2036,10 +2176,12 @@ export function HistoricoDayModal({
     !debouncedSearch.trim() &&
     !hasAnyFilter;
   const tableBusy =
-    dateFilterBusy || groupBusy || sortBusy || (isApiMode && apiData.isFetching);
+    dateFilterBusy || groupBusy || sortBusy || Boolean(pillBusy) || (isApiMode && apiData.isFetching);
   const tableBusyLabel = dateFilterBusy
     ? "Aguarde, aplicando período…"
-    : sortBusy || isSortPending
+    : pillBusy
+      ? "Aguarde, filtrando eventos..."
+      : sortBusy || isSortPending
       ? "Aguarde, ordenando…"
       : isApiMode && apiData.isFetching
         ? "Aguarde, carregando…"
@@ -2063,48 +2205,79 @@ export function HistoricoDayModal({
     flatRowIndices.length,
   ]);
 
-  /* cat counts for pills — unique employees per category within applied date range */
+  /* cat counts for pills — events in the current search/filter scope, excluding the category pill itself */
+  useEffect(() => {
+    if (!pillBusy) return;
+    const delay = events0.length > 100000 ? 450 : events0.length > 30000 ? 300 : 160;
+    const t = window.setTimeout(() => setPillBusy(""), delay);
+    return () => window.clearTimeout(t);
+  }, [pillBusy, pillFilter, filteredCount, flatRowIndices.length, events0.length]);
+
   const catCounts = useMemo(() => {
     if (!isEventsMode) return {};
+    const q = normalizeSearchText(debouncedSearch);
+    const isSheetImportMode =
+      String(posListKey || "") === "banco_horas" ||
+      String(posListKey || "") === "abonos_pendentes" ||
+      String(posListKey || "") === "abonos_efetuados";
     const fromKey = normDateKey(appliedDateFrom);
     const toKey = normDateKey(appliedDateTo);
-    const seen = {};
-    const indices = eventsDateIndex
+    const personCandidateIndices = q ? getPersonSearchCandidateIndices(q) : null;
+    const dateIndices = !q && eventsDateIndex && !isSheetImportMode
       ? collectEventIndicesInRange(eventsDateIndex, fromKey, toKey)
       : null;
+    const counts = {};
     const loop = (idx) => {
       const ev = events0[idx];
       if (!ev?._cat) return;
-      if (!seen[ev._cat]) seen[ev._cat] = new Set();
-      seen[ev._cat].add(ev.mat || ev.nome || "_");
+      const { search: evSearch, normDate: evDate } = eventMeta[idx] || {};
+      if (!isSheetImportMode && !dateIndices) {
+        if (fromKey && evDate && evDate < fromKey) return;
+        if (toKey && evDate && evDate > toKey) return;
+      }
+      if (q && !searchTextMatches(evSearch, q)) return;
+      for (const [col, filterEntry] of Object.entries(colFilters)) {
+        if (!isHdmColFilterActive(filterEntry)) continue;
+        if (col === "auditoria") continue;
+        const cellVal = getColFilterValue(ev, col, { stackHrsMrc, isEventsMode: true });
+        if (!rowPassesHdmColFilter(cellVal, filterEntry, col, getColFilterDisplay)) return;
+      }
+      counts[ev._cat] = (counts[ev._cat] || 0) + 1;
     };
-    if (indices) {
-      for (const idx of indices) loop(idx);
+    if (dateIndices) {
+      for (const idx of dateIndices) loop(idx);
+    } else if (personCandidateIndices) {
+      for (const idx of personCandidateIndices) loop(idx);
     } else {
       for (let idx = 0; idx < events0.length; idx++) {
-        const ev = events0[idx];
-        if (!ev._cat) continue;
-        const evDate = eventDateKey(ev);
-        if (fromKey && evDate && evDate < fromKey) continue;
-        if (toKey && evDate && evDate > toKey) continue;
         loop(idx);
       }
     }
-    const counts = {};
-    for (const [cat, s] of Object.entries(seen)) counts[cat] = s.size;
     return counts;
-  }, [isEventsMode, events0, eventsDateIndex, appliedDateFrom, appliedDateTo]);
+  }, [
+    isEventsMode,
+    events0,
+    eventMeta,
+    eventsDateIndex,
+    debouncedSearch,
+    appliedDateFrom,
+    appliedDateTo,
+    colFilters,
+    posListKey,
+    stackHrsMrc,
+    getPersonSearchCandidateIndices,
+  ]);
 
   /* memoized group tree — índices + totais pré-calculados (sem duplicar linhas) */
   const groupTree = useMemo(() => {
     if (isApiMode || !groupBy.length || groupingTooLarge) return null;
-    const scope = isEventsMode ? sortedEventIndices : sortedEmpIndices;
+    const scope = isEventsMode ? deferredSortedEventIndices : sortedEmpIndices;
     return buildGroupTreeIndexed(tableDataRows, groupBy, scope, isEventsMode);
   }, [
     groupBy,
     groupingTooLarge,
     isEventsMode,
-    sortedEventIndices,
+    deferredSortedEventIndices,
     sortedEmpIndices,
     tableDataRows,
   ]);
@@ -2150,6 +2323,7 @@ export function HistoricoDayModal({
   /* virtual scroll (flat list) */
   const tableWrapRef = useRef(null);
   const scrollRafRef = useRef(0);
+  const scrollTopRef = useRef(0);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewHeight, setViewHeight] = useState(480);
   useEffect(() => {
@@ -2162,6 +2336,7 @@ export function HistoricoDayModal({
     return () => ro.disconnect();
   }, [isMaximized, size.h]);
   useEffect(() => {
+    scrollTopRef.current = 0;
     setScrollTop(0);
     if (tableWrapRef.current) tableWrapRef.current.scrollTop = 0;
   }, [filteredCount, groupBy.length, sortCol, sortDir]);
@@ -2189,6 +2364,7 @@ export function HistoricoDayModal({
       bottomPad: (total - end) * virtualRowHeight,
     };
   }, [flatRowIndices.length, scrollTop, viewHeight, groupBy.length, groupingTooLarge, virtualRowHeight]);
+  const shouldTrackTableScroll = Boolean(virtualWindow);
 
   const modalDefaultColWidths = useMemo(
     () => ({
@@ -2290,13 +2466,17 @@ export function HistoricoDayModal({
   );
 
   const handleTableScroll = useCallback((e) => {
-    const nextTop = e.currentTarget.scrollTop;
-    if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
+    if (!shouldTrackTableScroll) return;
+    const nextTop = e.currentTarget.scrollTop || 0;
+    const minDelta = Math.max(1, Math.floor(virtualRowHeight / 2));
+    if (Math.abs(nextTop - scrollTopRef.current) < minDelta) return;
+    scrollTopRef.current = nextTop;
+    if (scrollRafRef.current) return;
     scrollRafRef.current = requestAnimationFrame(() => {
-      setScrollTop(nextTop);
+      setScrollTop(scrollTopRef.current);
       scrollRafRef.current = 0;
     });
-  }, []);
+  }, [shouldTrackTableScroll, virtualRowHeight]);
 
   /* display row limit for performance (small lists / fallback) */
   const ROW_LIMIT = largeDataset ? 80 : 150;
@@ -2448,6 +2628,20 @@ export function HistoricoDayModal({
     );
   };
 
+  const auditCollaboratorIndex = useMemo(() => {
+    if (!collaboratorDetailMode || !tableDataRows.length) return new Map();
+    const index = new Map();
+    tableDataRows.forEach((ev, idx) => {
+      if (!hasCollaboratorEventContent(ev)) return;
+      const matKey = String(ev?.mat || "").trim();
+      const key = matKey ? `mat:${matKey}` : `nome:${normalizeSearchText(ev?.nome || "")}`;
+      if (!key || key === "nome:") return;
+      if (!index.has(key)) index.set(key, []);
+      index.get(key).push(idx);
+    });
+    return index;
+  }, [collaboratorDetailMode, tableDataRows]);
+
   const collectAuditDetailLeafIndices = useCallback((node) => {
     const baseIndices = collectGroupLeafIndices(node.children);
     if (!auditWorkspaceMode || !baseIndices.length) return sortEventIndicesByDateTime(baseIndices);
@@ -2455,17 +2649,15 @@ export function HistoricoDayModal({
     const first = tableDataRows[baseIndices[0]];
     const matKey = String(first?.mat || "").trim();
     const nameKey = normalizeSearchText(first?.nome || "");
+    const collaboratorKey = matKey ? `mat:${matKey}` : `nome:${nameKey}`;
     const fromKey = normDateKey(appliedDateFrom);
     const toKey = normDateKey(appliedDateTo);
     const allIndices = [];
+    const candidateIndices = auditCollaboratorIndex.get(collaboratorKey) || baseIndices;
 
-    for (let idx = 0; idx < tableDataRows.length; idx++) {
+    for (const idx of candidateIndices) {
       const ev = tableDataRows[idx];
       if (!hasCollaboratorEventContent(ev)) continue;
-      const sameCollaborator = matKey
-        ? String(ev?.mat || "").trim() === matKey
-        : normalizeSearchText(ev?.nome || "") === nameKey;
-      if (!sameCollaborator) continue;
       const evDate = eventDateKey(ev);
       if (fromKey && evDate && evDate < fromKey) continue;
       if (toKey && evDate && evDate > toKey) continue;
@@ -2476,6 +2668,7 @@ export function HistoricoDayModal({
   }, [
     auditWorkspaceMode,
     tableDataRows,
+    auditCollaboratorIndex,
     appliedDateFrom,
     appliedDateTo,
     sortEventIndicesByDateTime,
@@ -2658,7 +2851,7 @@ export function HistoricoDayModal({
   }
 
   const inferRadarEventoFromAudit = (ev, auditoria = null) => {
-    const text = normText(
+    const text = normalizeSearchText(
       [
         ev?.evento,
         ev?.situacaoDesc,
@@ -2707,6 +2900,13 @@ export function HistoricoDayModal({
       onOpenRadar(detail);
       return;
     }
+    try {
+      window.__pbLastRadarOpenRequest = { ...detail, at: new Date().toISOString() };
+      if (typeof window.__pbOpenRadarWorkspace === "function") {
+        window.__pbOpenRadarWorkspace(detail);
+        return;
+      }
+    } catch {}
     try {
       window.dispatchEvent(
         new CustomEvent("pb-open-radar", {
@@ -2794,9 +2994,7 @@ export function HistoricoDayModal({
     if (!collaboratorDetailMode) return summary;
 
     const byColab = new Map();
-    const summaryIndices = filteredEventIndices.length > HDM_AUDIT_SUMMARY_FULL_LIMIT
-      ? filteredEventIndices.slice(0, HDM_AUDIT_SUMMARY_FULL_LIMIT)
-      : filteredEventIndices;
+    const summaryIndices = deferredFilteredEventIndices;
     for (const idx of summaryIndices) {
       const ev = tableDataRows[idx];
       if (!ev || !hasCollaboratorEventContent(ev)) continue;
@@ -2837,7 +3035,7 @@ export function HistoricoDayModal({
     return summary;
   }, [
     collaboratorDetailMode,
-    filteredEventIndices,
+    deferredFilteredEventIndices,
     tableDataRows,
     auditParams,
     auditReviews,
@@ -2945,6 +3143,7 @@ export function HistoricoDayModal({
       isFiltered("auditoria");
     const shouldScanAllGroups = auditWorkspaceMode && needsAuditDuringFilter;
     const candidateNodes = shouldScanAllGroups ? nodes : nodes.slice(pageStart, pageEnd);
+    const filteredIndexSet = new Set(filteredEventIndices);
     const preparedNodes = candidateNodes.map((node) => {
       const sourceLeafIndices = collectAuditDetailLeafIndices(node);
       const britanicoMap = buildPontoBritanicoMap(sourceLeafIndices);
@@ -2979,16 +3178,24 @@ export function HistoricoDayModal({
         }
         let passesAuditFilter = true;
         if (needsAuditDuringFilter) {
-          if (!auditPassesRuleFilter(audit, colFilters.auditoria)) passesAuditFilter = false;
-          if (auditOnly && audit.severidade === "ok") passesAuditFilter = false;
-          if (auditSeverityFilter !== "todos") {
+          passesAuditFilter = filteredIndexSet.has(idx);
+          if (passesAuditFilter && !auditPassesRuleFilter(audit, colFilters.auditoria)) {
+            passesAuditFilter = false;
+          }
+          if (passesAuditFilter && auditOnly && audit.severidade === "ok") {
+            passesAuditFilter = false;
+          }
+          if (passesAuditFilter && auditSeverityFilter !== "todos") {
             const severityOk = auditSeverityFilter === "ok"
               ? audit.severidade === "ok"
               : audit.severidade === auditSeverityFilter;
             if (!severityOk) passesAuditFilter = false;
           }
-          if (auditReviewStatusFilter !== "todos" && review.status !== auditReviewStatusFilter) passesAuditFilter = false;
+          if (passesAuditFilter && auditReviewStatusFilter !== "todos" && review.status !== auditReviewStatusFilter) {
+            passesAuditFilter = false;
+          }
           if (
+            passesAuditFilter &&
             auditCriticalPendingOnly &&
             !(review.status === "pendente" && isAuditActionable(audit) && (audit.severidade === "critica" || audit.severidade === "alta"))
           ) {
@@ -3025,7 +3232,7 @@ export function HistoricoDayModal({
         },
         { critica: 0, alta: 0, media: 0, baixa: 0, ok: 0, pendente: 0, criticaPendente: 0, altaPendente: 0, semAcao: 0 },
       );
-      return { node, sourceLeafIndices, sourceEntries, britanicoMap, leafEntries, groupKey, visibleEntries, firstRow, severitySummary };
+      return { node, sourceLeafIndices, sourceEntries, britanicoMap, leafEntries, groupKey, visibleEntries, firstRow, severitySummary, hasDisplayColFilters };
     }).filter(Boolean);
     const totalGroupCount = shouldScanAllGroups ? preparedNodes.length : nodes.length;
     const totalPages = Math.max(1, Math.ceil(totalGroupCount / pageSize));
@@ -3038,7 +3245,7 @@ export function HistoricoDayModal({
     const firstVisibleGroup = totalGroupCount ? boundedStart + 1 : 0;
     const lastVisibleGroup = Math.min(totalGroupCount, boundedStart + visiblePreparedNodes.length);
     const rendered = visiblePreparedNodes.flatMap((prepared) => {
-      const { node, sourceLeafIndices, sourceEntries, britanicoMap, leafEntries, groupKey, visibleEntries, firstRow, severitySummary } = prepared;
+      const { node, sourceLeafIndices, sourceEntries, britanicoMap, leafEntries, groupKey, visibleEntries, firstRow, severitySummary, hasDisplayColFilters } = prepared;
       const mat = firstRow?.mat || node.label || "";
       const nome = firstRow?.nome || "";
       const depto = firstRow?.depto || firstRow?.departamento || "";
@@ -3048,6 +3255,9 @@ export function HistoricoDayModal({
         acc.set(key, (acc.get(key) || 0) + 1);
         return acc;
       }, new Map());
+      const showFullTitleBadges =
+        !auditWorkspaceMode ||
+        (!needsAuditDuringFilter && !hasDisplayColFilters && leafEntries.length === sourceEntries.length);
       return [
         <tr key={`${node.colKey}:${node.label}:title`} className="hdm-collab-title-row">
           <td colSpan={5}>
@@ -3074,7 +3284,10 @@ export function HistoricoDayModal({
                   ? ` · ${leafEntries.length.toLocaleString("pt-BR")} exibidos`
                   : ""}
               </span>
-              <span className="hdm-collab-title-badges" aria-label="Resumo da auditoria do colaborador">
+              <span
+                className={`hdm-collab-title-badges${showFullTitleBadges ? "" : " is-compact"}`}
+                aria-label="Resumo da auditoria do colaborador"
+              >
                 {severitySummary.criticaPendente > 0 ? <span className="is-critica">Crit. pend. {severitySummary.criticaPendente.toLocaleString("pt-BR")}</span> : null}
                 {severitySummary.altaPendente > 0 ? <span className="is-alta">Altas pend. {severitySummary.altaPendente.toLocaleString("pt-BR")}</span> : null}
                 {severitySummary.media > 0 ? <span className="is-media">Med. {severitySummary.media.toLocaleString("pt-BR")}</span> : null}
@@ -3100,7 +3313,7 @@ export function HistoricoDayModal({
               const markSlots = markDisplaySlots.length;
               const previousEv = tableDataRows[sourceLeafIndices[sourcePos - 1]];
               const auditoria = audit || getEventAudit(ev, previousEv, britanicoMap);
-              const obs = String(auditoria.observacao || eventObservationText(ev) || "")
+              const obs = String(auditoria.observacao || "")
                 .replace(/^(Critica|Crítica|Alta|Media|Média|Baixa|OK):\s*/i, "");
               const reviewKey = preReviewKey || makeAuditReviewKey(ev, auditoria);
               const review = preReview || getAuditDisplayReview(auditoria, getAuditReview(reviewKey));
@@ -3256,7 +3469,7 @@ export function HistoricoDayModal({
                         <span>Risco trabalhista. Consulte o Radar.</span>
                       </button>
                     ) : (
-                      obs || "-"
+                      obs || null
                     )}
                   </td>
                 </tr>
@@ -3302,6 +3515,15 @@ export function HistoricoDayModal({
           </td>
         </tr>,
       );
+    }
+    if (!rendered.length) {
+      return [
+        <tr key="__collab-empty-after-filter">
+          <td colSpan={5} className="hdm-empty">
+            Nenhum evento encontrado para os filtros atuais.
+          </td>
+        </tr>,
+      ];
     }
     return rendered;
   };
@@ -4571,55 +4793,70 @@ export function HistoricoDayModal({
           height: size.h,
         };
 
+  const applyAuditSummaryFilter = useCallback((severity) => {
+    setAuditSummaryProcessing(severity);
+    window.requestAnimationFrame(() => {
+      startTransition(() => {
+        setAuditSeverityFilter(severity);
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!auditSummaryProcessing) return undefined;
+    const t = window.setTimeout(() => setAuditSummaryProcessing(""), 240);
+    return () => window.clearTimeout(t);
+  }, [auditSummaryProcessing, auditSeverityFilter, filteredCount, collaboratorAuditSummary]);
+
   const auditSummaryBar = collaboratorDetailMode && collaboratorAuditSummary ? (
     <div className="hdm-audit-summary-bar" aria-label="Resumo de severidade da auditoria">
       <button
         type="button"
-        className={`hdm-audit-summary-item hdm-audit-summary-item--total${auditSeverityFilter === "todos" ? " active" : ""}`}
-        onClick={() => setAuditSeverityFilter("todos")}
+        className={`hdm-audit-summary-item hdm-audit-summary-item--total${auditSeverityFilter === "todos" ? " active" : ""}${auditSummaryProcessing === "todos" ? " is-processing" : ""}`}
+        onClick={() => applyAuditSummaryFilter("todos")}
       >
         <span>Total</span>
-        <strong>{collaboratorAuditSummary.total.toLocaleString("pt-BR")}</strong>
+        <strong>{auditSummaryProcessing === "todos" ? "Processando..." : collaboratorAuditSummary.total.toLocaleString("pt-BR")}</strong>
       </button>
       <button
         type="button"
-        className={`hdm-audit-summary-item hdm-audit-summary-item--critica${auditSeverityFilter === "critica" ? " active" : ""}`}
-        onClick={() => setAuditSeverityFilter("critica")}
+        className={`hdm-audit-summary-item hdm-audit-summary-item--critica${auditSeverityFilter === "critica" ? " active" : ""}${auditSummaryProcessing === "critica" ? " is-processing" : ""}`}
+        onClick={() => applyAuditSummaryFilter("critica")}
       >
         <span>Criticas</span>
-        <strong>{collaboratorAuditSummary.critica.toLocaleString("pt-BR")}</strong>
+        <strong>{auditSummaryProcessing === "critica" ? "Processando..." : collaboratorAuditSummary.critica.toLocaleString("pt-BR")}</strong>
       </button>
       <button
         type="button"
-        className={`hdm-audit-summary-item hdm-audit-summary-item--alta${auditSeverityFilter === "alta" ? " active" : ""}`}
-        onClick={() => setAuditSeverityFilter("alta")}
+        className={`hdm-audit-summary-item hdm-audit-summary-item--alta${auditSeverityFilter === "alta" ? " active" : ""}${auditSummaryProcessing === "alta" ? " is-processing" : ""}`}
+        onClick={() => applyAuditSummaryFilter("alta")}
       >
         <span>Altas</span>
-        <strong>{collaboratorAuditSummary.alta.toLocaleString("pt-BR")}</strong>
+        <strong>{auditSummaryProcessing === "alta" ? "Processando..." : collaboratorAuditSummary.alta.toLocaleString("pt-BR")}</strong>
       </button>
       <button
         type="button"
-        className={`hdm-audit-summary-item hdm-audit-summary-item--media${auditSeverityFilter === "media" ? " active" : ""}`}
-        onClick={() => setAuditSeverityFilter("media")}
+        className={`hdm-audit-summary-item hdm-audit-summary-item--media${auditSeverityFilter === "media" ? " active" : ""}${auditSummaryProcessing === "media" ? " is-processing" : ""}`}
+        onClick={() => applyAuditSummaryFilter("media")}
       >
         <span>Medias</span>
-        <strong>{collaboratorAuditSummary.media.toLocaleString("pt-BR")}</strong>
+        <strong>{auditSummaryProcessing === "media" ? "Processando..." : collaboratorAuditSummary.media.toLocaleString("pt-BR")}</strong>
       </button>
       <button
         type="button"
-        className={`hdm-audit-summary-item hdm-audit-summary-item--baixa${auditSeverityFilter === "baixa" ? " active" : ""}`}
-        onClick={() => setAuditSeverityFilter("baixa")}
+        className={`hdm-audit-summary-item hdm-audit-summary-item--baixa${auditSeverityFilter === "baixa" ? " active" : ""}${auditSummaryProcessing === "baixa" ? " is-processing" : ""}`}
+        onClick={() => applyAuditSummaryFilter("baixa")}
       >
         <span>Baixas</span>
-        <strong>{collaboratorAuditSummary.baixa.toLocaleString("pt-BR")}</strong>
+        <strong>{auditSummaryProcessing === "baixa" ? "Processando..." : collaboratorAuditSummary.baixa.toLocaleString("pt-BR")}</strong>
       </button>
       <button
         type="button"
-        className={`hdm-audit-summary-item hdm-audit-summary-item--ok${auditSeverityFilter === "ok" ? " active" : ""}`}
-        onClick={() => setAuditSeverityFilter("ok")}
+        className={`hdm-audit-summary-item hdm-audit-summary-item--ok${auditSeverityFilter === "ok" ? " active" : ""}${auditSummaryProcessing === "ok" ? " is-processing" : ""}`}
+        onClick={() => applyAuditSummaryFilter("ok")}
       >
         <span>OK</span>
-        <strong>{collaboratorAuditSummary.ok.toLocaleString("pt-BR")}</strong>
+        <strong>{auditSummaryProcessing === "ok" ? "Processando..." : collaboratorAuditSummary.ok.toLocaleString("pt-BR")}</strong>
       </button>
     </div>
   ) : null;
@@ -4690,22 +4927,22 @@ export function HistoricoDayModal({
             <div className={`hdm-pills-row${auditWorkspaceMode ? " hdm-pills-row--audit" : ""}`}>
               <button
                 type="button"
-                className={`hdm-pill hdm-pill-all${pillFilter ? "" : " active"}`}
-                onClick={() => setPillFilter(null)}
+                className={`hdm-pill hdm-pill-all${pillFilter ? "" : " active"}${pillBusy === "todos" ? " is-processing" : ""}`}
+                onClick={() => applyPillFilter(null)}
                 title="Mostrar todos os eventos do periodo"
               >
-                Todos ({allEventFilterCount.toLocaleString("pt-BR")})
+                {pillBusy === "todos" ? "Processando..." : `Todos (${allEventFilterCount.toLocaleString("pt-BR")})`}
               </button>
               {EVENT_PILLS.map(([cat, cls, lbl]) =>
                 catCounts[cat] ? (
                   <button
                     key={cat}
                     type="button"
-                    className={`hdm-pill ${cls}${pillFilter === cat ? " active" : ""}`}
-                    onClick={() => setPillFilter((f) => (f === cat ? null : cat))}
+                    className={`hdm-pill ${cls}${pillFilter === cat ? " active" : ""}${pillBusy === cat ? " is-processing" : ""}`}
+                    onClick={() => applyPillFilter(cat)}
                     title={PILL_TOOLTIPS[cat] || lbl}
                   >
-                    {lbl} ({catCounts[cat]})
+                    {pillBusy === cat ? "Processando..." : `${lbl} (${catCounts[cat]})`}
                   </button>
                 ) : null,
               )}
@@ -4790,8 +5027,7 @@ export function HistoricoDayModal({
                 </button>
               </>
             )}
-            <input
-              type="search"
+            <HdmSearchInput
               className="hdm-search"
               placeholder={
                 isEventsMode
@@ -4799,7 +5035,8 @@ export function HistoricoDayModal({
                   : "Buscar nome, matrícula, depto, filial…"
               }
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onCommit={commitSearch}
+              delay={isEventsMode ? 300 : 180}
               autoFocus
             />
 
@@ -4839,7 +5076,7 @@ export function HistoricoDayModal({
 
             {collaboratorDetailMode && (
               <select
-                className="hdm-audit-status-filter"
+                className={`hdm-audit-status-filter${auditReviewStatusFilter !== "todos" ? " active" : ""}`}
                 value={auditReviewStatusFilter}
                 onChange={(e) => setAuditReviewStatusFilter(e.target.value)}
                 title="Filtrar por status do tratamento da auditoria"
@@ -5062,9 +5299,8 @@ export function HistoricoDayModal({
               )}
             </div>
 
-            {!isSheetImportEmbedded ? (
+            {!isSheetImportEmbedded && hasAnyFilter ? (
               <span className="hdm-count hdm-count--audit">
-                <span>{filteredCount} / {totalRows}</span>
                 {hasAnyFilter ? (
                   <span className="hdm-filter-inline-note">
                     Filtros ativos · {Math.max(0, totalRows - filteredCount).toLocaleString("pt-BR")} ocultos
@@ -5181,7 +5417,7 @@ export function HistoricoDayModal({
             ref={tableWrapRef}
             className={`hdm-table-wrap${auditWorkspaceMode ? " hdm-table-wrap--audit-workspace" : ""}`}
             style={{ position: "relative" }}
-            onScroll={handleTableScroll}
+            onScroll={shouldTrackTableScroll ? handleTableScroll : undefined}
           >
             {tableBusy && (
               <div

@@ -1,12 +1,18 @@
 import { createAnomalia } from "../../types/regras.js";
 import { fmtMin, sumPairs } from "../../utils/tempo.js";
 import { isEventoPresencaText } from "../classificacaoEventos.js";
-import { isEventoExtraOuCompensado } from "./classificacaoFinanceira.js";
+import {
+  getSameDayEventTexts,
+  hasSameDayPointAdjustmentEvent,
+  isEventoExtraOuCompensado,
+} from "./classificacaoFinanceira.js";
 
 export function regraDivergenciaHorasEvento(ctx) {
   if (!ctx.isEventoTrabalhado) return null;
   if (!isEventoPresencaText(ctx.input, ctx.params)) return null;
-  if ((ctx.sameDayEventTexts || []).some((text) => isEventoExtraOuCompensado(text))) return null;
+  const sameDayEventTexts = getSameDayEventTexts(ctx);
+  if (sameDayEventTexts.some((text) => isEventoExtraOuCompensado(text))) return null;
+  if (hasSameDayPointAdjustmentEvent(ctx)) return null;
   if (ctx.marcacoes.length < 2 || Number(ctx.input.horas || 0) <= 0) return null;
   const calc = sumPairs(ctx.marcacoes);
   const diff = Math.abs(calc - Number(ctx.input.horas || 0));

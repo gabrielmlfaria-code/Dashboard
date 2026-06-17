@@ -5,7 +5,7 @@ function hasProrrogacaoNoturna(ctx) {
   if (ctx.marcacoes.length < 2) return false;
   const primeira = ctx.marcacoes[0];
   const ultima = ctx.marcacoes[ctx.marcacoes.length - 1];
-  const iniciouPeriodoNoturno = primeira.baseMinutes >= 22 * 60 || primeira.baseMinutes < 5 * 60;
+  const iniciouPeriodoNoturno = primeira.baseMinutes > 22 * 60 || primeira.baseMinutes < 5 * 60;
   const passouDasCinco = ultima.minutes > (ultima.dayOffset > 0 ? 24 * 60 + 5 * 60 : 5 * 60);
   return iniciouPeriodoNoturno && passouDasCinco;
 }

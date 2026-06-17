@@ -657,6 +657,38 @@ export function RadarTrabalhistaShell({
     return `Pico: ${p.value} (${p.turno} ${p.dow})`;
   }, [data.heatmap.peak]);
 
+  const playbookOnly = Boolean(initialRequest?.embeddedPlaybookOnly && initialRequest?.openPlaybook);
+
+  if (playbookOnly) {
+    return (
+      <>
+        <input
+          ref={cctFileInputRef}
+          id={CCT_FILE_INPUT_ID}
+          type="file"
+          accept=".pdf,application/pdf"
+          multiple
+          tabIndex={-1}
+          aria-hidden
+          className="pb-cct-file-input-native"
+          onChange={handleCctNativeInputChange}
+        />
+        {eventPlaybook ? (
+          <RadarEventoPlaybookModal
+            eventRow={eventPlaybook}
+            passivoCfg={passivoCfg}
+            onClose={() => {
+              setEventPlaybook(null);
+              onClose?.();
+            }}
+          />
+        ) : (
+          <div className="rt-overlay-loading">Carregando detalhe do Radar trabalhista...</div>
+        )}
+      </>
+    );
+  }
+
   return (
     <div
       className="rt-shell"

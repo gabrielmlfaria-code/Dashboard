@@ -1,5 +1,14 @@
 /* Radar Trabalhista — modal tela cheia */
 .rt-overlay {
+  --rt-acc: #6366f1;
+  --rt-acc-soft: rgba(99, 102, 241, 0.18);
+  --rt-bg: #0a0c14;
+  --rt-surface: #111520;
+  --rt-card: #161b2e;
+  --rt-t1: #f0f4ff;
+  --rt-t2: #8892b0;
+  --rt-tm: #4a5270;
+  --rt-border: rgba(255, 255, 255, 0.06);
   position: fixed;
   inset: 0;
   z-index: 2147483500;
@@ -12,7 +21,28 @@
   backdrop-filter: blur(6px);
 }
 .rt-overlay[data-theme="light"] {
+  --rt-bg: #f0f2f9;
+  --rt-surface: #fff;
+  --rt-card: #fff;
+  --rt-t1: #111827;
+  --rt-t2: #4b5563;
+  --rt-tm: #9ca3af;
+  --rt-border: rgba(0, 0, 0, 0.08);
+  --rt-acc: #4f46e5;
+  --rt-acc-soft: rgba(79, 70, 229, 0.12);
   background: rgba(15, 23, 42, 0.35);
+}
+.rt-overlay--playbook {
+  background: rgba(15, 23, 42, 0.2);
+  backdrop-filter: blur(2px);
+}
+.rt-overlay--playbook .rt-overlay-panel {
+  display: contents;
+}
+.rt-overlay--playbook .rt-pb-modal {
+  background: var(--rt-card);
+  color: var(--rt-t1);
+  opacity: 1;
 }
 .rt-overlay-panel {
   flex: 1;

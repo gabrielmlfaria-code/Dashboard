@@ -4,6 +4,7 @@ import {
   isEventoPresencaText,
   textFromEvent,
 } from "../classificacaoEventos.js";
+import { isEventoAjustePonto } from "./classificacaoFinanceira.js";
 
 function getEventosDia(input) {
   const value = input?.eventosDia || input?.eventosMesmoDia || input?.sameDayEvents || [];
@@ -12,6 +13,7 @@ function getEventosDia(input) {
 
 function isEventoComplementarOuRisco(text) {
   return (
+    isEventoAjustePonto(text) ||
     text.includes("total de jornada") ||
     text.includes("jornada maior que") ||
     text.includes("risco trab") ||
