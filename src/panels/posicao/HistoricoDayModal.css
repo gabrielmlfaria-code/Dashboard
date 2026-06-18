@@ -504,6 +504,10 @@
   --hdm-pill-hrs-c: #a5b4fc;
 }
 
+.hdm-overlay { text-transform: lowercase; }
+.hdm-emp-name,
+.hdm-collab-title-btn strong { text-transform: capitalize; }
+
 .hdm-overlay[data-theme="dark"] .hdm-modal--audit-workspace {
   background: oklch(0.18 0.018 264);
 }
@@ -1682,18 +1686,19 @@ button.hdm-pill.is-processing {
   font-size: 12px;
 }
 .hdm-collab-title-row td {
-  padding: 8px 10px;
-  background: var(--hdm-modal-bg);
-  border-top: 1px solid var(--hdm-border);
+  padding: 4px 10px;
+  background: color-mix(in srgb, #38bdf8 6%, var(--hdm-modal-bg2));
+  border-top: none;
   border-bottom: 1px solid var(--hdm-border);
+  border-left: 3px solid rgba(99, 102, 241, 0.4);
   color: var(--hdm-text);
   font-weight: 800;
 }
 .hdm-collab-title-btn {
   width: 100%;
-  min-height: 30px;
+  min-height: 24px;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 .hdm-collab-dept {
   margin-left: 10px;
@@ -1718,6 +1723,47 @@ button.hdm-pill.is-processing {
 }
 .hdm-resizable-th {
   position: sticky;
+}
+.hdm-collab-extra-th {
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hdm-collab-col-hide-btn {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: none;
+  background: none;
+  color: var(--hdm-text-faint);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin-left: 2px;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.hdm-collab-extra-th:hover .hdm-collab-col-hide-btn {
+  opacity: 1;
+}
+.hdm-collab-col-hide-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  opacity: 1;
+}
+.hdm-collab-extra-td {
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--hdm-text-muted);
 }
 .hdm-col-resize-handle {
   position: absolute;
@@ -1847,11 +1893,25 @@ button.hdm-pill.is-processing {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.hdm-collab-event span {
-  display: inline-block;
-  margin-top: 2px;
-  color: var(--hdm-text-muted);
+.hdm-collab-event-inner {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  overflow: hidden;
+}
+.hdm-collab-ev-cod {
+  flex: 0 0 auto;
+  min-width: 4ch;
+  font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
   font-size: 11px;
+  font-weight: 700;
+  color: var(--hdm-text-dim);
+  text-align: right;
+}
+.hdm-collab-event-inner > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: lowercase;
 }
 .hdm-collab-hours {
   text-align: right;
@@ -1864,6 +1924,10 @@ button.hdm-pill.is-processing {
   font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
   font-size: 11.5px;
   white-space: nowrap;
+}
+.hdm-collab-marks--shared {
+  vertical-align: middle;
+  border-left: 2px solid var(--hdm-border-sub);
 }
 .hdm-collab-mark-line {
   display: grid;
@@ -1916,6 +1980,23 @@ button.hdm-pill.is-processing {
 }
 .hdm-marc-out {
   color: #ef4444;
+}
+.hdm-marc-missing {
+  color: var(--hdm-text-faint);
+  font-weight: 400;
+}
+.hdm-marc-token {
+  color: #b45309;
+  font-weight: 700;
+}
+.hdm-overlay[data-theme="dark"] .hdm-marc-token {
+  color: #fbbf24;
+}
+.hdm-collab-detail-table .hdm-collab-event-row.hdm-day-sep td {
+  border-top: 2px solid var(--hdm-border);
+}
+.hdm-overlay[data-theme="dark"] .hdm-collab-detail-table .hdm-collab-event-row.hdm-day-sep td {
+  border-top-color: rgba(255, 255, 255, 0.12);
 }
 .hdm-collab-obs {
   color: var(--hdm-text-muted);
@@ -2039,10 +2120,12 @@ button.hdm-pill.is-processing {
 .hdm-table .hdm-collab-title-row td {
   position: sticky;
   top: var(--hdm-collab-sticky-title-top, 38px);
-  left: 0;
   z-index: 7;
-  background: var(--hdm-modal-bg2);
+  background: color-mix(in srgb, #38bdf8 6%, var(--hdm-modal-bg2));
+  border-top: none;
   border-bottom: 1px solid color-mix(in srgb, var(--hdm-border) 82%, #94a3b8);
+  border-left: 3px solid rgba(99, 102, 241, 0.4);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
 }
 .hdm-audit-summary-bar {
   display: grid;

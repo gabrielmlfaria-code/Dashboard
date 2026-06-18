@@ -132,7 +132,17 @@ const buildSequence = (parts) => {
   });
 };
 
-const formatDiff = (diff) => (diff === 0 ? "" : `${diff > 0 ? "+" : ""}${diff}m`);
+const formatDiff = (diff) => {
+  if (diff === 0) return "";
+  const sign = diff > 0 ? "+" : "-";
+  const abs = Math.abs(diff);
+  if (abs >= 60) {
+    const h = Math.floor(abs / 60);
+    const m = abs % 60;
+    return m > 0 ? `${sign}${h}h${String(m).padStart(2, "0")}m` : `${sign}${h}h`;
+  }
+  return `${sign}${abs}m`;
+};
 
 const buildMarkSlots = (horario, marcacao, tolerance = 0) => {
   const prev = buildSequence(splitTimeTokens(horario));
@@ -607,13 +617,13 @@ export function AuditoriaPontoFastModal({
       .filter(([, value]) => value);
     const matchesItem = (item) => {
       if (!itemInDateRange(item, appliedDateFrom, appliedDateTo)) return false;
-      if (severity !== "todos" && item.severity !== severity) return false;
       const reviewStatus = item.review.status || "pendente";
       if (status !== "todos") {
         if (status === "pendente_acao" && !(reviewStatus === "pendente" && isActionable(item.audit))) return false;
         if (status !== "pendente_acao" && reviewStatus !== status) return false;
       }
-      if (category && (item.ev?._cat || item.ev?.categoria || "") !== category) return false;
+      if (category === "__auditoria__") { if (item.severity === "ok") return false; }
+      else if (category && (item.ev?._cat || item.ev?.categoria || "") !== category) return false;
       if (rule && item.audit?.codigo !== rule) return false;
       if (!matchesHoursFilter(item, columnFilters)) return false;
       for (const [key, value] of activeColumnFilters) {
@@ -645,14 +655,14 @@ export function AuditoriaPontoFastModal({
         if (typeof av === "number" || typeof bv === "number") return ((Number(av) || 0) - (Number(bv) || 0)) * dir;
         return String(av).localeCompare(String(bv), "pt-BR") * dir;
       });
-  }, [model.groups, q, appliedDateFrom, appliedDateTo, severity, status, category, rule, columnFilters, sortConfig]);
+  }, [model.groups, q, appliedDateFrom, appliedDateTo, status, category, rule, columnFilters, sortConfig]);
 
   useEffect(() => {
     setPage(1);
     setBusy(true);
     const timer = window.setTimeout(() => setBusy(false), Math.min(450, 80 + filteredGroups.length));
     return () => window.clearTimeout(timer);
-  }, [deferredSearch, appliedDateFrom, appliedDateTo, severity, status, category, rule, columnFilters, sortConfig, filteredGroups.length]);
+  }, [deferredSearch, appliedDateFrom, appliedDateTo, status, category, rule, columnFilters, sortConfig, filteredGroups.length]);
 
   const totalPages = Math.max(1, Math.ceil(filteredGroups.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -730,22 +740,12 @@ export function AuditoriaPontoFastModal({
           </div>
         </header>
 
-        <div className="pb-audit-fast-kpis">
-          {["todos", "critica", "alta", "media", "baixa", "ok"].map((key) => (
-            <button
-              type="button"
-              key={key}
-              className={`is-${key}${severity === key ? " active" : ""}`}
-              onClick={() => setSeverity(key)}
-            >
-              <span>{SEVERITY_LABEL[key]}</span>
-              <strong>{(key === "todos" ? periodStats.summary.total : periodStats.summary[key] || 0).toLocaleString("pt-BR")}</strong>
-            </button>
-          ))}
-        </div>
-
         <div className="pb-audit-fast-pills">
-          <button type="button" className={!category ? "active" : ""} onClick={() => setCategory("")}>Todos</button>
+          <button type="button" className={!category ? "active" : ""} onClick={() => setCategory("")}>Todos <b>{periodStats.summary.total.toLocaleString("pt-BR")}</b></button>
+          <button type="button" className={`is-auditoria${category === "__auditoria__" ? " active" : ""}`} onClick={() => setCategory("__auditoria__")}>
+            <span>Auditoria</span>
+            <b>{(periodStats.summary.total - (periodStats.summary.ok || 0)).toLocaleString("pt-BR")}</b>
+          </button>
           {categoryEntries.map(([key, count]) => (
             <button type="button" key={key} className={category === key ? "active" : ""} onClick={() => setCategory(key)}>
               <span>{formatCategoryLabel(key)}</span>
@@ -951,20 +951,32 @@ export function AuditoriaPontoFastModal({
                             {item.audit?.memoria ? (
                               <div>
                                 <button type="button" className="pb-audit-fast-message" onClick={() => setMemory({ item, group })}>
-                                  <span>{SEVERITY_BADGE_LABEL[item.severity] || SEVERITY_LABEL[item.severity] || item.severity}</span>
-                                  <i>{reviewStatus.replace("_", " ")}</i>
+                                  {item.audit?.tratamentoRegra !== "informativa" && (
+                                    <span>{SEVERITY_BADGE_LABEL[item.severity] || SEVERITY_LABEL[item.severity] || item.severity}</span>
+                                  )}
+                                  {item.audit?.tratamentoRegra !== "informativa" && <i>{reviewStatus.replace("_", " ")}</i>}
                                   <b>{obs}</b>
                                 </button>
+                                {item.audit?.tratamentoRegra !== "informativa" && (
                                 <details>
                                   <summary>Ações</summary>
                                   <div>
                                     <button type="button" onClick={() => setMemory({ item, group })}>Memória</button>
-                                    <button type="button" onClick={() => updateReview(item.reviewKey, { status: "revisado" })}>Revisar</button>
-                                    <button type="button" onClick={() => updateReview(item.reviewKey, { status: "justificado" })}>Justificar</button>
-                                    <button type="button" onClick={() => updateReview(item.reviewKey, { status: "ajuste" })}>Corrigir</button>
-                                    <button type="button" onClick={() => updateReview(item.reviewKey, { status: "sem_acao" })}>Sem ação</button>
+                                    {(item.audit?.tratamentoRegra === "acao" || item.audit?.tratamentoRegra === "revisao_manual" || !item.audit?.tratamentoRegra) && (
+                                      <button type="button" onClick={() => updateReview(item.reviewKey, { status: "revisado" })}>Revisar</button>
+                                    )}
+                                    {(!item.audit?.tratamentoRegra || item.audit?.tratamentoRegra === "acao") && (
+                                      <>
+                                        <button type="button" onClick={() => updateReview(item.reviewKey, { status: "justificado" })}>Justificar</button>
+                                        <button type="button" onClick={() => updateReview(item.reviewKey, { status: "ajuste" })}>Corrigir</button>
+                                      </>
+                                    )}
+                                    {item.audit?.tratamentoRegra !== "informativa" && (
+                                      <button type="button" onClick={() => updateReview(item.reviewKey, { status: "sem_acao" })}>Sem ação</button>
+                                    )}
                                   </div>
                                 </details>
+                                )}
                               </div>
                             ) : item.audit?.radarTrabalhista ? (
                               <button type="button" className="pb-audit-fast-radar" onClick={() => openRadar(ev, item.audit)}>
@@ -982,7 +994,9 @@ export function AuditoriaPontoFastModal({
               })}
               {!pageGroups.length ? (
                 <tr>
-                  <td colSpan={5} className="pb-audit-fast-empty">Nenhum evento encontrado para os filtros atuais.</td>
+                  <td colSpan={5} className="pb-audit-fast-empty">
+                    Nenhum evento encontrado para os filtros atuais.
+                  </td>
                 </tr>
               ) : null}
             </tbody>
@@ -1019,10 +1033,24 @@ export function AuditoriaPontoFastModal({
                 <span><b>Horas</b>{fmtMinutes(memory.item.ev?.horas)}</span>
               </div>
               <MarkStack ev={memory.item.ev} tolerance={params?.toleranciaMinutos || 0} />
-              <p>{memory.item.audit?.observacao || "Sem observação."}</p>
-              {Array.isArray(memory.item.audit?.detalhes) && memory.item.audit.detalhes.length ? (
-                <ul>{memory.item.audit.detalhes.map((detail) => <li key={detail}>{detail}</li>)}</ul>
-              ) : null}
+              {Array.isArray(memory.item.audit?.anomalias) && memory.item.audit.anomalias.map((anomalia, idx) => (
+                <div key={idx} className="pb-audit-fast-anomalia">
+                  <div className="pb-audit-fast-anomalia-head">
+                    <span className={`pb-audit-fast-sev is-${anomalia.severity}`}>
+                      {SEVERITY_LABEL[anomalia.severity] || anomalia.severity}
+                    </span>
+                    <strong>{anomalia.message}</strong>
+                  </div>
+                  {anomalia.details ? (
+                    <p className="pb-audit-fast-anomalia-details">{anomalia.details}</p>
+                  ) : null}
+                  {Array.isArray(anomalia.memoria) && anomalia.memoria.length > 0 ? (
+                    <ul className="pb-audit-fast-anomalia-memoria">
+                      {anomalia.memoria.map((step, i) => <li key={i}>{step}</li>)}
+                    </ul>
+                  ) : null}
+                </div>
+              ))}
             </section>
           </div>
         ) : null}

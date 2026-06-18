@@ -87,6 +87,7 @@ export const normalizeAuditoriaParamsConfig = (value = {}) => {
     regrasDesativadas,
     regrasCustomizadas,
     tratamentoRegras: source.tratamentoRegras || {},
+    limiarsRegras: (source.limiarsRegras && typeof source.limiarsRegras === "object") ? source.limiarsRegras : {},
     eventosIgnoradosAuditoria: Array.isArray(source.eventosIgnoradosAuditoria)
       ? source.eventosIgnoradosAuditoria
       : DEFAULT_AUDITORIA_PONTO_EVENTOS_IGNORADOS,
@@ -441,6 +442,27 @@ export function AuditoriaPontoParamsPanel({ open, value, onChange, onClose, onSa
                         {rule.categoria} - {rule.severidadePadrao} - {rule.id}
                       </em>
                     </span>
+                    {rule.limiar ? (
+                      <label className="pb-audit-rule-limiar">
+                        <span>{rule.limiar.label}</span>
+                        <div>
+                          <input
+                            type="number"
+                            min="0"
+                            value={Number(config.limiarsRegras?.[rule.id] ?? rule.limiar.defaultValue)}
+                            onChange={(ev) =>
+                              emitChange({
+                                limiarsRegras: {
+                                  ...(config.limiarsRegras || {}),
+                                  [rule.id]: Math.max(0, Math.round(Number(ev.target.value) || 0)),
+                                },
+                              })
+                            }
+                          />
+                          <em>{rule.limiar.suffix}</em>
+                        </div>
+                      </label>
+                    ) : <span />}
                     <select
                       value={config.tratamentoRegras?.[rule.id] || "acao"}
                       onChange={(ev) =>

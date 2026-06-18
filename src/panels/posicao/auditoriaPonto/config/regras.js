@@ -180,6 +180,10 @@ function inferirSeveridadeRegra(id, categoria) {
   return "media";
 }
 
+const REGRA_LIMIAR_CONFIG = {
+  DIVERGENCIA_HORAS_EVENTO: { label: "Limiar Alta", suffix: "min", defaultValue: 30 },
+};
+
 export const REGRAS_AUDITORIA_PONTO_META = REGRAS_AUDITORIA_PONTO.map(({ id, versao }) => {
   const categoria = inferirCategoriaRegra(id);
   return {
@@ -188,5 +192,6 @@ export const REGRAS_AUDITORIA_PONTO_META = REGRAS_AUDITORIA_PONTO.map(({ id, ver
     titulo: REGRA_TITULOS[id] || id,
     categoria,
     severidadePadrao: inferirSeveridadeRegra(id, categoria),
+    limiar: REGRA_LIMIAR_CONFIG[id] || null,
   };
 });

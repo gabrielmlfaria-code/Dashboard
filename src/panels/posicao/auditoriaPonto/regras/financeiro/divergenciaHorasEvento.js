@@ -1,5 +1,5 @@
 import { createAnomalia } from "../../types/regras.js";
-import { fmtMin, sumPairs } from "../../utils/tempo.js";
+import { fmtDiffMin, fmtMin, sumPairs } from "../../utils/tempo.js";
 import { isEventoPresencaText } from "../classificacaoEventos.js";
 import {
   getSameDayEventTexts,
@@ -17,16 +17,17 @@ export function regraDivergenciaHorasEvento(ctx) {
   const calc = sumPairs(ctx.marcacoes);
   const diff = Math.abs(calc - Number(ctx.input.horas || 0));
   if (diff <= ctx.params.toleranciaMinutos) return null;
+  const limiteAlta = Number(ctx.params.limiarsRegras?.["DIVERGENCIA_HORAS_EVENTO"] ?? 30);
   return createAnomalia({
-    severity: "alta",
+    severity: diff >= limiteAlta ? "alta" : "media",
     code: "DIVERGENCIA_HORAS_EVENTO",
-    message: `Horas do evento diferem das marcacoes em ${Math.round(diff)} min.`,
+    message: `Horas do evento diferem das marcacoes em ${fmtDiffMin(diff)}.`,
     details: `Evento ${fmtMin(ctx.input.horas)}; marcacoes ${fmtMin(calc)}`,
     categoria: "financeiro",
     memoria: [
       `Horas do evento: ${fmtMin(ctx.input.horas)}`,
       `Horas calculadas pelas marcacoes: ${fmtMin(calc)}`,
-      `Diferenca: ${Math.round(diff)} min`,
+      `Diferenca: ${fmtDiffMin(diff)}`,
       `Tolerancia: ${ctx.params.toleranciaMinutos} min`,
     ],
   });

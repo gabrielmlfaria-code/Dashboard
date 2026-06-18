@@ -21,6 +21,22 @@ export function fmtMin(min) {
   return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, "0")}`;
 }
 
+export function fmtDateShort(iso) {
+  if (!iso) return iso || "";
+  const p = String(iso).split("-");
+  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0].slice(2)}` : iso;
+}
+
+export function fmtDiffMin(min) {
+  const v = Math.round(Math.abs(Number(min) || 0));
+  if (v >= 60) {
+    const h = Math.floor(v / 60);
+    const m = v % 60;
+    return m > 0 ? `${h}h${String(m).padStart(2, "0")}m` : `${h}h`;
+  }
+  return `${v} min`;
+}
+
 export function stripHorarioCode(value) {
   return String(value || "")
     .replace(/^\d+\s*-\s*/, "")

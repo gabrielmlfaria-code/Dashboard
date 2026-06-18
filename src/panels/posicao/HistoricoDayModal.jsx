@@ -308,7 +308,7 @@ const HDM_AUDIT_REVIEW_KEY = "mp_auditoria_ponto_reviews_v1";
 const HDM_COLLAB_COL_WIDTH_KEY = "mp_hdm_collab_col_widths_v1";
 const HDM_COLLAB_COL_DEFAULT_WIDTHS = {
   data: 150,
-  evento: 560,
+  evento: 360,
   horas: 100,
   horario: 340,
   auditoria: 420,
@@ -2138,9 +2138,29 @@ export function HistoricoDayModal({
       : filteredEmps.length;
 
   const collaboratorDetailMode = isEventsMode && !isApiMode && !isPosEmbedded && groupBy[0] === "mat";
+  const collabSubheadRef = useRef(null);
+  const [collabSubheadHeight, setCollabSubheadHeight] = useState(38);
+  useEffect(() => {
+    if (!collaboratorDetailMode || !collabSubheadRef.current) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setCollabSubheadHeight(Math.round(entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height));
+      }
+    });
+    ro.observe(collabSubheadRef.current);
+    return () => ro.disconnect();
+  }, [collaboratorDetailMode]);
   const auditWorkspaceMode = collaboratorDetailMode && Boolean(initialAuditOnly);
   const showCollabAuditDetails = auditWorkspaceMode;
-  const collabDetailColSpan = showCollabAuditDetails ? 5 : 4;
+
+  const COLLAB_OPTIONAL_COL_IDS = ["justificativa", "cidDescricao"];
+  const collabExtraCols = collaboratorDetailMode
+    ? COLLAB_OPTIONAL_COL_IDS
+        .filter((id) => visibleCols.has(id))
+        .map((id) => EVENT_COLS.find((c) => c.id === id))
+        .filter(Boolean)
+    : [];
+  const collabDetailColSpan = (showCollabAuditDetails ? 5 : 4) + collabExtraCols.length;
   const collabGroupInitialLimit = auditWorkspaceMode
     ? HDM_AUDIT_COLLAB_GROUP_INITIAL_LIMIT
     : HDM_COLLAB_GROUP_INITIAL_LIMIT;
@@ -2704,7 +2724,14 @@ export function HistoricoDayModal({
   }
   function formatMarkDiff(diff) {
     if (diff === 0) return "";
-    return `${diff > 0 ? "+" : ""}${diff}m`;
+    const sign = diff > 0 ? "+" : "-";
+    const abs = Math.abs(diff);
+    if (abs >= 60) {
+      const h = Math.floor(abs / 60);
+      const m = abs % 60;
+      return m > 0 ? `${sign}${h}h${String(m).padStart(2, "0")}m` : `${sign}${h}`;
+    }
+    return `${sign}${abs}m`;
   }
   function buildMarkDisplaySlots(prevParts, realParts) {
     const tolerance = Math.max(0, Number(auditParams?.toleranciaMinutos) || 0);
@@ -3060,7 +3087,7 @@ export function HistoricoDayModal({
   );
 
   const renderCollaboratorDetailHeader = () => (
-    <tr className="hdm-collab-subhead-row">
+    <tr ref={collabSubheadRef} className="hdm-collab-subhead-row">
       <th className="hdm-resizable-th">
         <span>Data</span>
         {renderCollabResizeHandle("data")}
@@ -3085,6 +3112,33 @@ export function HistoricoDayModal({
         </div>
         {renderCollabResizeHandle("evento")}
       </th>
+      {collabExtraCols.map((col) => (
+        <th key={col.id} className={`hdm-collab-extra-th${col.numeric ? " hdm-th-num" : ""}`}>
+          <div className="hdm-collab-filter-head">
+            <span>{col.label}</span>
+            <button
+              type="button"
+              ref={(el) => { filterBtnRefs.current[col.id] = el; }}
+              className={`hdm-filt-btn${isFiltered(col.id) ? " active" : ""}`}
+              onClick={(e) => {
+                filterBtnRefs.current[col.id] = e.currentTarget;
+                openFilter(col.id);
+              }}
+              title={`Filtrar ${col.label}`}
+            >
+              ▼
+            </button>
+            <button
+              type="button"
+              className="hdm-collab-col-hide-btn"
+              onClick={() => setVisibleCols((prev) => { const n = new Set(prev); n.delete(col.id); return n; })}
+              title={`Ocultar ${col.label}`}
+            >
+              ×
+            </button>
+          </div>
+        </th>
+      ))}
       <th className="hdm-resizable-th">
         <div className="hdm-collab-filter-head">
           <span>Horas</span>
@@ -3285,9 +3339,11 @@ export function HistoricoDayModal({
               </span>
               <strong>{groupLabel}</strong>
               {depto ? <span className="hdm-collab-dept">Depto: {depto}</span> : null}
+              {firstRow?.filial && visibleCols.has("filial") ? <span className="hdm-collab-dept">Filial: {firstRow.filial}</span> : null}
+              {firstRow?.cargo && visibleCols.has("cargo") ? <span className="hdm-collab-dept">Cargo: {firstRow.cargo}</span> : null}
               <span className="hdm-grp-meta">
                 {" · "}
-                {sourceEntries.length.toLocaleString("pt-BR")} eventos
+                {sourceEntries.length.toLocaleString("pt-BR")} evento{sourceEntries.length !== 1 ? "s" : ""}
                 {leafEntries.length !== sourceEntries.length
                   ? ` · ${leafEntries.length.toLocaleString("pt-BR")} exibidos`
                   : ""}
@@ -3314,7 +3370,9 @@ export function HistoricoDayModal({
               const dk = eventDateKey(ev);
               const prevVisible = visiblePos > 0 ? tableDataRows[visibleEntries[visiblePos - 1].idx] : null;
               const startsDay = visiblePos === 0 || eventDateKey(prevVisible) !== dk;
-              const startsMultiEventDay = startsDay && (visibleDayCounts.get(dk || "sem-data") || 0) > 1;
+              const dayEventCount = visibleDayCounts.get(dk || "sem-data") || 1;
+              const isMultiEventDay = dayEventCount > 1;
+              const startsMultiEventDay = startsDay && isMultiEventDay;
               const mrc = marcacaoDistinctFromHorario(ev.horario, ev.marcacao) || ev.marcacao || "";
               const horarioParts = splitTimeTokens(ev.horario);
               const marcacaoParts = splitMarkDisplayTokens(mrc);
@@ -3344,7 +3402,7 @@ export function HistoricoDayModal({
               return (
                 <tr
                   key={`${node.colKey}:${node.label}:${idx}`}
-                  className={`hdm-collab-event-row ${evtRowClass(ev)}${startsMultiEventDay ? " hdm-day-start" : ""}`}
+                  className={`hdm-collab-event-row ${evtRowClass(ev)}${startsDay && visiblePos > 0 ? " hdm-day-sep" : ""}${startsMultiEventDay ? " hdm-day-start" : ""}`}
                 >
                   <td className={`hdm-collab-date${startsDay ? "" : " hdm-collab-date-repeat"}`}>
                     {startsDay ? (
@@ -3355,16 +3413,32 @@ export function HistoricoDayModal({
                     ) : null}
                   </td>
                   <td className="hdm-collab-event">
-                    <div>{ev.cod ? `${ev.cod} - ` : ""}{ev.evento || ev.situacaoDesc || "Evento sem descrição"}</div>
+                    <div className="hdm-collab-event-inner">
+                      {ev.cod ? <span className="hdm-collab-ev-cod">{ev.cod}</span> : null}
+                      <span>{ev.evento || ev.situacaoDesc || "Evento sem descrição"}</span>
+                    </div>
                   </td>
+                  {collabExtraCols.map((col) => {
+                    let val;
+                    if (col.id === "_cat") val = EVENT_CAT_LABELS[ev._cat] || ev._cat || "—";
+                    else if (col.id === "hrsPlan") val = ev.hrsPlan > 0 ? fmtMin(Number(ev.hrsPlan)) : "—";
+                    else val = ev[col.id] || "—";
+                    return (
+                      <td key={col.id} className={`hdm-td-text hdm-collab-extra-td${col.numeric ? " hdm-td-num" : ""}`}>
+                        {val}
+                      </td>
+                    );
+                  })}
                   <td className="hdm-collab-hours">{fmtMin(Number(ev.horas) || 0)}</td>
+                  {isMultiEventDay && !startsDay ? null : (
                   <td
-                    className="hdm-collab-marks hdm-td-calc"
+                    className={`hdm-collab-marks hdm-td-calc${isMultiEventDay ? " hdm-collab-marks--shared" : ""}`}
+                    rowSpan={isMultiEventDay && startsDay ? dayEventCount : undefined}
                     title="Abrir calculadora de horas"
                     onClick={() => setCalcEv(ev)}
                   >
                     <div className="hdm-collab-mark-line" style={{ "--mark-slots": markSlots }}>
-                      <span className="hdm-collab-mark-label">Prev:</span>
+                      <span className="hdm-collab-mark-label">Hor:</span>
                       <span className="hdm-collab-mark-values">
                         {markDisplaySlots.map((slot, partIdx) => (
                           <span key={`${idx}-hor-${partIdx}`} className="hdm-collab-time-slot">
@@ -3376,16 +3450,21 @@ export function HistoricoDayModal({
                     {hasRealMarks ? (
                       <>
                         <div className="hdm-collab-mark-line hdm-collab-marcacao" style={{ "--mark-slots": markSlots }}>
-                          <span className="hdm-collab-mark-label">Real:</span>
+                          <span className="hdm-collab-mark-label">Mar:</span>
                           <span className="hdm-collab-mark-values">
-                            {markDisplaySlots.map((slot, partIdx) => (
-                              <span
-                                key={`${idx}-mrc-${partIdx}`}
-                                className={`hdm-collab-time-slot ${partIdx % 2 === 0 ? "hdm-marc-in" : "hdm-marc-out"}`}
-                              >
-                                {slot.real || ""}
-                              </span>
-                            ))}
+                            {markDisplaySlots.map((slot, partIdx) => {
+                              const isSpecialToken = slot.real && !/^\d{1,2}:\d{2}$/.test(slot.real);
+                              const cls = !slot.real
+                                ? "hdm-marc-missing"
+                                : isSpecialToken
+                                  ? "hdm-marc-token"
+                                  : partIdx % 2 === 0 ? "hdm-marc-in" : "hdm-marc-out";
+                              return (
+                                <span key={`${idx}-mrc-${partIdx}`} className={`hdm-collab-time-slot ${cls}`}>
+                                  {slot.real || (slot.prev ? "—" : "")}
+                                </span>
+                              );
+                            })}
                           </span>
                         </div>
                         <div className="hdm-collab-mark-line hdm-collab-diff" style={{ "--mark-slots": markSlots }}>
@@ -3404,6 +3483,7 @@ export function HistoricoDayModal({
                       </>
                     ) : null}
                   </td>
+                  )}
                   {showCollabAuditDetails ? (
                   <td
                     className={`hdm-collab-obs ${auditoria.severidade && auditoria.severidade !== "ok" ? `hdm-audit-${auditoria.severidade}` : ""}`}
@@ -3417,59 +3497,81 @@ export function HistoricoDayModal({
                           className="hdm-audit-chip-main"
                           onClick={openAuditMemoria}
                         >
-                          <span className={`hdm-audit-severity-badge hdm-audit-severity-${auditoria.severidade || "ok"}`}>
-                            {auditoria.severidade === "critica"
-                              ? "Critica"
-                              : auditoria.severidade === "alta"
-                                ? "Alta"
-                                : auditoria.severidade === "media"
-                                  ? "Media"
-                                  : auditoria.severidade === "baixa"
-                                    ? "Baixa"
-                                    : "OK"}
-                          </span>
-                          <span className={`hdm-audit-review-badge hdm-audit-review-${review.status}`}>
-                            {AUDIT_REVIEW_LABELS[review.status] || review.status}
-                          </span>
+                          {(auditoria.tratamentoRegra || auditParams?.tratamentoRegras?.[auditoria?.codigo] || "acao") !== "informativa" && (
+                            <span className={`hdm-audit-severity-badge hdm-audit-severity-${auditoria.severidade || "ok"}`}>
+                              {auditoria.severidade === "critica"
+                                ? "Critica"
+                                : auditoria.severidade === "alta"
+                                  ? "Alta"
+                                  : auditoria.severidade === "media"
+                                    ? "Media"
+                                    : auditoria.severidade === "baixa"
+                                      ? "Baixa"
+                                      : "OK"}
+                            </span>
+                          )}
+                          {(auditoria.tratamentoRegra || auditParams?.tratamentoRegras?.[auditoria?.codigo] || "acao") !== "informativa" && (
+                            <span className={`hdm-audit-review-badge hdm-audit-review-${review.status}`}>
+                              {AUDIT_REVIEW_LABELS[review.status] || review.status}
+                            </span>
+                          )}
                           <span className="hdm-audit-message">{obs}</span>
                         </button>
+                        {(auditoria.tratamentoRegra || auditParams?.tratamentoRegras?.[auditoria?.codigo] || "acao") !== "informativa" && (
                         <details className="hdm-audit-actions-menu" onClick={(e) => e.stopPropagation()}>
                           <summary>Ações</summary>
-                          <div className="hdm-audit-actions-pop">
-                            <button type="button" onClick={openAuditMemoria}>
-                              Memoria / explicacao
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateAuditReview(reviewKey, { status: "revisado" })}
-                            >
-                              Revisar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateAuditReview(reviewKey, { status: "justificado" })}
-                            >
-                              Justificar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateAuditReview(reviewKey, { status: "ajuste" })}
-                            >
-                              Corrigir
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updateAuditReview(reviewKey, {
-                                  status: "sem_acao",
-                                  justificativa: getAuditReview(reviewKey).justificativa || "Evento marcado como sem ação.",
-                                })
-                              }
-                            >
-                              Sem ação
-                            </button>
-                          </div>
+                          {(() => {
+                            const trat = auditoria.tratamentoRegra || auditParams?.tratamentoRegras?.[auditoria?.codigo] || "acao";
+                            const isAcao = trat === "acao";
+                            const isRevisao = trat === "revisao_manual";
+                            const isNaoAplicavel = trat === "nao_aplicavel";
+                            return (
+                              <div className="hdm-audit-actions-pop">
+                                <button type="button" onClick={openAuditMemoria}>
+                                  Memoria / explicacao
+                                </button>
+                                {(isAcao || isRevisao) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => updateAuditReview(reviewKey, { status: "revisado" })}
+                                  >
+                                    Revisar
+                                  </button>
+                                )}
+                                {isAcao && (
+                                  <button
+                                    type="button"
+                                    onClick={() => updateAuditReview(reviewKey, { status: "justificado" })}
+                                  >
+                                    Justificar
+                                  </button>
+                                )}
+                                {isAcao && (
+                                  <button
+                                    type="button"
+                                    onClick={() => updateAuditReview(reviewKey, { status: "ajuste" })}
+                                  >
+                                    Corrigir
+                                  </button>
+                                )}
+                                {(isAcao || isRevisao || isNaoAplicavel) && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      updateAuditReview(reviewKey, {
+                                        status: "sem_acao",
+                                        justificativa: getAuditReview(reviewKey).justificativa || "Evento marcado como sem ação.",
+                                      })
+                                    }
+                                  >
+                                    Sem ação
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </details>
+                        )}
                       </div>
                     ) : auditoria.radarTrabalhista ? (
                       <button
@@ -4109,6 +4211,7 @@ export function HistoricoDayModal({
           ref={(el) => {
             thRefs.current["nome"] = el;
           }}
+          title="Colaborador"
           style={
             colWidths["nome"]
               ? { width: colWidths["nome"], minWidth: colWidths["nome"] }
@@ -4203,6 +4306,7 @@ export function HistoricoDayModal({
         }}
         className={`hdm-th${def.numeric ? " hdm-th-num" : ""}${dragOverId === colId ? " drag-over" : ""}`}
         style={thW ? { width: thW, minWidth: thW } : undefined}
+        title={colLabel}
         onDragOver={(e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = "move";
@@ -5216,7 +5320,7 @@ export function HistoricoDayModal({
                 onClick={() => setStackHrsMrc((v) => !v)}
                 title="Empilhar Horário e Marcação numa coluna só"
               >
-                ⇕ Horário
+                ⇕ Empilhar
               </button>
             )}
 
@@ -5231,7 +5335,7 @@ export function HistoricoDayModal({
                 }
                 title="Agrupar eventos por colaborador"
               >
-                👤 Colaborador
+                👤 Agrupar
               </button>
             )}
 
@@ -5489,6 +5593,7 @@ export function HistoricoDayModal({
                 "--hdm-col-evento": `${collabColWidths.evento}px`,
                 "--hdm-col-horas": `${collabColWidths.horas}px`,
                 "--hdm-col-horario": `${collabColWidths.horario}px`,
+                "--hdm-collab-sticky-title-top": `${collabSubheadHeight}px`,
                 ...(showCollabAuditDetails ? { "--hdm-col-auditoria": `${collabColWidths.auditoria}px` } : {}),
               } : { width: modalTableWidth, minWidth: "100%" }}
             >
@@ -5496,6 +5601,7 @@ export function HistoricoDayModal({
                 <colgroup>
                   <col style={{ width: collabColWidths.data }} />
                   <col style={{ width: collabColWidths.evento }} />
+                  {collabExtraCols.map((col) => <col key={col.id} style={{ width: 180 }} />)}
                   <col style={{ width: collabColWidths.horas }} />
                   <col style={{ width: collabColWidths.horario }} />
                   {showCollabAuditDetails ? <col style={{ width: collabColWidths.auditoria }} /> : null}

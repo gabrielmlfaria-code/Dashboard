@@ -1,5 +1,5 @@
 import { createAnomalia } from "../../types/regras.js";
-import { dayDiff, extractTimes, fmtMin } from "../../utils/tempo.js";
+import { dayDiff, extractTimes, fmtDateShort, fmtDiffMin, fmtMin } from "../../utils/tempo.js";
 import { normalizarMarcacoes } from "../../core/normalizador.js";
 
 export function regraInterjornadaInsuficiente(ctx) {
@@ -14,20 +14,23 @@ export function regraInterjornadaInsuficiente(ctx) {
   const currentAbs = diffDays * 1440 + firstCurrent.baseMinutes;
   const descanso = currentAbs - lastPrevious.minutes;
   if (descanso <= 0 || descanso >= ctx.params.intervaloInterjornadaMinutos) return null;
+  const minimo = ctx.params.intervaloInterjornadaMinutos;
+  const deficit = minimo - descanso;
+  const prevDate = fmtDateShort(ctx.input.previousData);
+  const currDate = fmtDateShort(ctx.input.data);
   return createAnomalia({
     severity: "critica",
     code: "INTERJORNADA_INSUFICIENTE",
-    message: "Intervalo interjornada abaixo do parametro.",
-    details: `Descanso ${fmtMin(descanso)}; minimo ${fmtMin(ctx.params.intervaloInterjornadaMinutos)}`,
+    message: `Interjornada de ${fmtDiffMin(descanso)} — faltaram ${fmtDiffMin(deficit)} para o minimo de ${fmtDiffMin(minimo)}.`,
+    details: `Saida ${prevDate} ${lastPrevious.original} → entrada ${currDate} ${firstCurrent.original}`,
     categoria: "legal",
     forcaBloqueio: true,
     memoria: [
-      `Data anterior: ${ctx.input.previousData}`,
-      `Ultima saida anterior: ${lastPrevious.original}`,
-      `Data atual: ${ctx.input.data}`,
-      `Primeira marcacao atual: ${firstCurrent.original}`,
-      `Descanso calculado: ${fmtMin(descanso)}`,
-      `Minimo configurado: ${fmtMin(ctx.params.intervaloInterjornadaMinutos)}`,
+      `Saida do dia anterior: ${prevDate} às ${lastPrevious.original}`,
+      `Entrada do dia atual:  ${currDate} às ${firstCurrent.original}`,
+      `Descanso calculado:    ${fmtDiffMin(descanso)} (${descanso} min)`,
+      `Minimo configurado:    ${fmtDiffMin(minimo)} (${minimo} min)`,
+      `Deficit:               ${fmtDiffMin(deficit)} abaixo do minimo`,
     ],
   });
 }
