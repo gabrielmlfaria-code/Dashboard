@@ -46,6 +46,24 @@ const CATEGORY_LABEL = {
   ignorar: "Ignorar",
 };
 const CATEGORY_ORDER = ["pres", "presentes", "ause", "ausentes", "just", "justificadas", "extr", "extras", "trab", "risco", "notu", "noturnas", "igno", "ignorar"];
+const CATEGORY_KPI = {
+  pres:         { color: "#16a34a", icon: "✓" },
+  presentes:    { color: "#16a34a", icon: "✓" },
+  ause:         { color: "#dc2626", icon: "✕" },
+  ausentes:     { color: "#dc2626", icon: "✕" },
+  just:         { color: "#2563eb", icon: "≡" },
+  justificadas: { color: "#2563eb", icon: "≡" },
+  justificados: { color: "#2563eb", icon: "≡" },
+  extr:         { color: "#ea580c", icon: "⚡" },
+  extras:       { color: "#ea580c", icon: "⚡" },
+  trab:         { color: "#d97706", icon: "△" },
+  risco:        { color: "#d97706", icon: "△" },
+  risco_trab:   { color: "#d97706", icon: "△" },
+  notu:         { color: "#7c3aed", icon: "☽" },
+  noturnas:     { color: "#7c3aed", icon: "☽" },
+  igno:         { color: "#94a3b8", icon: "—" },
+  ignorar:      { color: "#94a3b8", icon: "—" },
+};
 
 const formatCategoryLabel = (key) => {
   const raw = String(key || "").trim();
@@ -740,18 +758,59 @@ export function AuditoriaPontoFastModal({
           </div>
         </header>
 
-        <div className="pb-audit-fast-pills">
-          <button type="button" className={!category ? "active" : ""} onClick={() => setCategory("")}>Todos <b>{periodStats.summary.total.toLocaleString("pt-BR")}</b></button>
-          <button type="button" className={`is-auditoria${category === "__auditoria__" ? " active" : ""}`} onClick={() => setCategory("__auditoria__")}>
-            <span>Auditoria</span>
-            <b>{(periodStats.summary.total - (periodStats.summary.ok || 0)).toLocaleString("pt-BR")}</b>
+        <div className="pb-audit-fast-kpi-cards">
+          <button
+            type="button"
+            className={`pb-audit-fast-kpi-card${!category ? " active" : ""}`}
+            style={{ "--kpi-color": "#6366f1" }}
+            onClick={() => setCategory("")}
+          >
+            <div className="pb-audit-fast-kpi-top">
+              <span>TOTAL</span>
+              <i>⊞</i>
+            </div>
+            <div className="pb-audit-fast-kpi-bottom">
+              <strong>{periodStats.summary.total.toLocaleString("pt-BR")}</strong>
+              <em>100%</em>
+            </div>
           </button>
-          {categoryEntries.map(([key, count]) => (
-            <button type="button" key={key} className={category === key ? "active" : ""} onClick={() => setCategory(key)}>
-              <span>{formatCategoryLabel(key)}</span>
-              <b>{count.toLocaleString("pt-BR")}</b>
-            </button>
-          ))}
+          <button
+            type="button"
+            className={`pb-audit-fast-kpi-card${category === "__auditoria__" ? " active" : ""}`}
+            style={{ "--kpi-color": "#f59e0b" }}
+            onClick={() => setCategory("__auditoria__")}
+          >
+            <div className="pb-audit-fast-kpi-top">
+              <span>AUDITORIA</span>
+              <i>⚑</i>
+            </div>
+            <div className="pb-audit-fast-kpi-bottom">
+              <strong>{(periodStats.summary.total - (periodStats.summary.ok || 0)).toLocaleString("pt-BR")}</strong>
+              <em>{periodStats.summary.total > 0 ? (((periodStats.summary.total - (periodStats.summary.ok || 0)) / periodStats.summary.total) * 100).toFixed(1) : "0.0"}%</em>
+            </div>
+          </button>
+          {categoryEntries.map(([key, count]) => {
+            const cfg = CATEGORY_KPI[key] || { color: "#6366f1", icon: "•" };
+            const pct = periodStats.summary.total > 0 ? ((count / periodStats.summary.total) * 100).toFixed(1) : "0.0";
+            return (
+              <button
+                key={key}
+                type="button"
+                className={`pb-audit-fast-kpi-card${category === key ? " active" : ""}`}
+                style={{ "--kpi-color": cfg.color }}
+                onClick={() => setCategory(key)}
+              >
+                <div className="pb-audit-fast-kpi-top">
+                  <span>{formatCategoryLabel(key).toUpperCase()}</span>
+                  <i>{cfg.icon}</i>
+                </div>
+                <div className="pb-audit-fast-kpi-bottom">
+                  <strong>{count.toLocaleString("pt-BR")}</strong>
+                  <em>{pct}%</em>
+                </div>
+              </button>
+            );
+          })}
         </div>
 
         <div className="pb-audit-fast-toolbar">
@@ -779,15 +838,6 @@ export function AuditoriaPontoFastModal({
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar colaborador, matrícula, evento, regra..."
           />
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="todos">Status: todos</option>
-            <option value="pendente_acao">Pendentes de decisão</option>
-            <option value="pendente">Pendentes</option>
-            <option value="sem_acao">Sem ação</option>
-            <option value="revisado">Revisado</option>
-            <option value="justificado">Justificado</option>
-            <option value="ajuste">Corrigir folha</option>
-          </select>
           <select value={rule} onChange={(e) => handleRuleChange(e.target.value)}>
             <option value="">Regra acionada: todas do resultado</option>
             {periodStats.ruleOptions.map((item) => (
@@ -922,8 +972,6 @@ export function AuditoriaPontoFastModal({
                         {group.depto ? <span>Depto: {group.depto}</span> : null}
                         <em>{group.items.length.toLocaleString("pt-BR")} eventos exibidos</em>
                         {group.summary.pendente ? <b className="is-pendente">Pend. {group.summary.pendente}</b> : null}
-                        {group.summary.pendente ? null : group.summary.semAcao ? <b className="is-sem-acao">Sem ação {group.summary.semAcao}</b> : null}
-                        {group.summary.pendente || group.summary.semAcao ? null : group.summary.ok ? <b className="is-ok">OK {group.summary.ok}</b> : null}
                       </td>
                     </tr>
                     {group.items.map((item, idx) => {
@@ -944,7 +992,7 @@ export function AuditoriaPontoFastModal({
                               </span>
                             ) : null}
                           </td>
-                          <td className="pb-audit-fast-event-text">{ev?.cod ? `${ev.cod} - ` : ""}{ev?.evento || ev?.situacaoDesc || "Evento sem descrição"}</td>
+                          <td className="pb-audit-fast-event-text">{stripHorarioCode(ev?.evento || ev?.situacaoDesc || "Evento sem descrição")}</td>
                           <td className="pb-audit-fast-hours">{fmtMinutes(ev?.horas)}</td>
                           <td>{startsDay ? <MarkStack ev={ev} tolerance={params?.toleranciaMinutos || 0} /> : null}</td>
                           <td className={`pb-audit-fast-audit is-${item.severity || "ok"}`}>
@@ -1029,7 +1077,7 @@ export function AuditoriaPontoFastModal({
               <div className="pb-audit-fast-memory-grid">
                 <span><b>Colaborador</b>{memory.group.mat} - {memory.group.nome}</span>
                 <span><b>Data</b>{fmtDateBr(normDateKey(memory.item.ev?.data))}</span>
-                <span><b>Evento</b>{memory.item.ev?.cod ? `${memory.item.ev.cod} - ` : ""}{memory.item.ev?.evento}</span>
+                <span><b>Evento</b>{stripHorarioCode(memory.item.ev?.evento || memory.item.ev?.situacaoDesc || "")}</span>
                 <span><b>Horas</b>{fmtMinutes(memory.item.ev?.horas)}</span>
               </div>
               <MarkStack ev={memory.item.ev} tolerance={params?.toleranciaMinutos || 0} />
