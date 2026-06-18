@@ -197,3 +197,25 @@ test("formatAbonosImportSummary resume efetuados", () => {
   assert.match(msg, /Abonos efetuados importados/);
   assert.match(msg, /1 ocorrência/);
 });
+
+test("buildAbonosByDept respeita o periodo da planilha importada", () => {
+  const stored = packAbonosStorage([
+    { departamento: "RH", matricula: "1", nome: "A", data: "2026-06-01", horasMin: 60 },
+    { departamento: "TI", matricula: "2", nome: "B", data: "2026-06-15", horasMin: 30 },
+  ]);
+  const histRows = [{ _events: [{ _cat: "ausentes", depto: "Fiscal", evento: "Falta" }] }];
+  const juneFirst = buildAbonosByDept(null, {
+    stored,
+    histRows,
+    periodo: { de: "2026-06-01", ate: "2026-06-01" },
+  });
+  assert.equal(juneFirst.totals.pendentes, 1);
+  assert.equal(juneFirst.rows[0].dept, "RH");
+  const may = buildAbonosByDept(null, {
+    stored,
+    histRows,
+    periodo: { de: "2026-05-01", ate: "2026-05-31" },
+  });
+  assert.equal(may.totals.pendentes, 0);
+  assert.equal(may.rows.length, 0);
+});

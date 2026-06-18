@@ -55,6 +55,22 @@ export const parseBancoHorasDate = (value) => {
   return "";
 };
 
+export const filterBancoHorasRowsByPeriod = (rows, periodo = null) => {
+  const list = Array.isArray(rows) ? rows : [];
+  const de = parseBancoHorasDate(periodo?.de);
+  const ate = parseBancoHorasDate(periodo?.ate);
+  if (!de && !ate) return list;
+
+  return list.filter((row) => {
+    const inicio = parseBancoHorasDate(row?.periodoInicial || row?.inicio || row?.data);
+    const fim = parseBancoHorasDate(row?.periodoFinal || row?.termino || row?.data) || inicio;
+    if (!inicio && !fim) return true;
+    if (ate && inicio && inicio > ate) return false;
+    if (de && fim && fim < de) return false;
+    return true;
+  });
+};
+
 const findCol = (headers, patterns) =>
   headers.findIndex((h) => patterns.some((pattern) => pattern.test(h)));
 

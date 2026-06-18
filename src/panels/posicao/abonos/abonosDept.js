@@ -574,12 +574,23 @@ function buildAbonosFromImportedDetails(pendentesRows, efetuadosRows, limit = 10
 }
 
 export function buildAbonosByDept(dia, opts = {}) {
-  const { limit = 10, histRows = [], stored = null, useStoredFallback = false } = opts;
+  const { limit = 10, histRows = [], stored = null, useStoredFallback = false, periodo = null } = opts;
 
   const data = stored && typeof stored === "object" ? stored : loadKpiAbonos();
-  const pendRows = getAbonosDetailRows(data, ABONOS_KIND.pendentes);
-  const efetRows = getAbonosDetailRows(data, ABONOS_KIND.efetuados);
-  if (pendRows.length || efetRows.length) {
+  const de = parseBancoHorasDate(periodo?.de);
+  const ate = parseBancoHorasDate(periodo?.ate);
+  const inPeriod = (row) => {
+    const dataRow = parseBancoHorasDate(row?.data);
+    if (!dataRow) return true;
+    if (de && dataRow < de) return false;
+    if (ate && dataRow > ate) return false;
+    return true;
+  };
+  const allPendRows = getAbonosDetailRows(data, ABONOS_KIND.pendentes);
+  const allEfetRows = getAbonosDetailRows(data, ABONOS_KIND.efetuados);
+  const pendRows = allPendRows.filter(inPeriod);
+  const efetRows = allEfetRows.filter(inPeriod);
+  if (allPendRows.length || allEfetRows.length) {
     return buildAbonosFromImportedDetails(pendRows, efetRows, limit);
   }
 

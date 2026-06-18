@@ -40,6 +40,7 @@ export function AbonosDeptPanel({
   filteredDia = null,
   histRows = [],
   storedOverride = null,
+  periodo = null,
   onOpenDeptColaboradores,
 }) {
   const [stored, setStored] = useState(() => loadKpiAbonos());
@@ -61,7 +62,7 @@ export function AbonosDeptPanel({
   }, [metricCol]);
 
   const day = filteredDia || dia;
-  const effectiveStored = storedOverride || stored;
+  const effectiveStored = storedOverride ?? stored;
   const built = useMemo(
     () =>
       buildAbonosByDept(day, {
@@ -69,8 +70,9 @@ export function AbonosDeptPanel({
         histRows,
         stored: effectiveStored,
         useStoredFallback: Boolean(storedOverride),
+        periodo,
       }),
-    [day, histRows, effectiveStored, storedOverride],
+    [day, histRows, effectiveStored, storedOverride, periodo],
   );
 
   const tabRows = useMemo(

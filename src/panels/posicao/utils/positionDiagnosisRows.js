@@ -14,9 +14,9 @@ export function inferPeriodoCategoryFromEventText(value) {
     .normalize("NFD")
     .replace(/\p{M}/gu, "");
   if (!s) return "";
+  if (/\bferias\b|vacat/.test(s)) return "ferias";
   if (/afast|licenca|licenca medica|auxilio|inss|atestado|enfermidade|maternidade|acidente/.test(s))
     return "afastados";
-  if (/\bferias\b|vacat/.test(s)) return "ferias";
   return "";
 }
 
@@ -74,17 +74,26 @@ export function compactDiagnosisRow(row = {}) {
 
 export function collectDiagnosisCategoryRows(source, category) {
   if (!source) return [];
-  const directBuckets = [
-    source?.[category],
-    source?.byCat?.[category],
-    source?.categorias?.[category],
-    source?.categories?.[category],
-  ];
+  const categoryKeys =
+    category === "faltas"
+      ? ["faltasGrupo", "faltasRows", "faltas", "falta"]
+      : category === "atrasos"
+        ? ["atrasosGrupo", "atrasosRows", "atrasos", "atraso"]
+        : category === "ferias"
+          ? ["férias", "feriasRows", "ferias"]
+          : [category];
+  const directBuckets = categoryKeys.flatMap((key) => [
+    source?.[key],
+    source?.byCat?.[key],
+    source?.categorias?.[key],
+    source?.categories?.[key],
+  ]);
   const directRows = directBuckets.flatMap((bucket) => {
     if (Array.isArray(bucket)) return bucket;
     if (!bucket || typeof bucket !== "object") return [];
     return [
       ...(Array.isArray(bucket.rows) ? bucket.rows : []),
+      ...(Array.isArray(bucket.colaboradores) ? bucket.colaboradores : []),
       ...(Array.isArray(bucket.eventos) ? bucket.eventos : []),
       ...(Array.isArray(bucket.events) ? bucket.events : []),
       ...(Array.isArray(bucket.employees) ? bucket.employees : []),

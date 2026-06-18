@@ -14,6 +14,7 @@ import {
   diagnoseBancoHorasSheet,
   formatBancoHorasDiagnosis,
   formatBancoHorasImportSummary,
+  filterBancoHorasRowsByPeriod,
   loadKpiBancoHoras,
   readWorksheetAoa,
   packBancoHorasStorage,
@@ -459,6 +460,9 @@ function buildDashboardAuditoriaPontoSummary(histRows, params, reviews = {}) {
     tratadoPct: 0,
     topDeptos: [],
     principal: null,
+    riscoTrab: 0,
+    extras: 0,
+    noturnas: 0,
   };
   const deptos = new Map();
 
@@ -492,14 +496,22 @@ function buildDashboardAuditoriaPontoSummary(histRows, params, reviews = {}) {
       );
       const sev = audit?.severidade || "ok";
       summary[sev] = (summary[sev] || 0) + 1;
+      const evCat = String(ev?._cat || ev?.categoria || "").toLowerCase().trim().replace(/\s+/g, "_");
+      const isRiscoTrab = ["trab", "risco", "risco_trab"].includes(evCat);
+      const isExtras = ["extr", "extras"].includes(evCat);
+      const isNoturnas = ["notu", "noturnas"].includes(evCat);
+      if (isRiscoTrab) summary.riscoTrab += 1;
+      if (isExtras) summary.extras += 1;
+      if (isNoturnas) summary.noturnas += 1;
       if (!audit?.memoria || sev === "ok") return;
       const review = getDashboardAuditDisplayReview(audit, reviews[makeDashboardAuditReviewKey(ev, audit)] || {});
       const status = review.status || "pendente";
       const actionable = isDashboardAuditActionable(audit);
       const depto = String(ev?.depto || ev?.departamento || ev?.depto_desc || "Sem departamento").trim() || "Sem departamento";
-      const current = deptos.get(depto) || { label: depto, total: 0, critica: 0, alta: 0, pendente: 0 };
+      const current = deptos.get(depto) || { label: depto, total: 0, critica: 0, alta: 0, pendente: 0, riscoTrab: 0 };
       current.total += 1;
       current[sev] = (current[sev] || 0) + 1;
+      if (isRiscoTrab) current.riscoTrab += 1;
       if (status === "pendente" && actionable) current.pendente += 1;
       deptos.set(depto, current);
       summary.total += 1;
@@ -508,14 +520,17 @@ function buildDashboardAuditoriaPontoSummary(histRows, params, reviews = {}) {
       if (status === "ajuste") summary.ajuste += 1;
       const ranked = {
         severidade: sev,
+        categoria: evCat,
         observacao: audit.observacao || "",
         departamento: depto,
         colaborador: ev?.nome || "",
         matricula: ev?.mat || "",
       };
+      const principalIsRisco = ["trab", "risco", "risco_trab"].includes(summary.principal?.categoria || "");
       if (
         !summary.principal ||
-        PB_AUDIT_SEVERITY_ORDER[ranked.severidade] > PB_AUDIT_SEVERITY_ORDER[summary.principal.severidade]
+        (!principalIsRisco && isRiscoTrab) ||
+        (isRiscoTrab === principalIsRisco && PB_AUDIT_SEVERITY_ORDER[ranked.severidade] > PB_AUDIT_SEVERITY_ORDER[summary.principal.severidade])
       ) {
         summary.principal = ranked;
       }
@@ -524,7 +539,7 @@ function buildDashboardAuditoriaPontoSummary(histRows, params, reviews = {}) {
 
   summary.tratadoPct = summary.total ? Math.round((summary.tratado / summary.total) * 100) : 0;
   summary.topDeptos = Array.from(deptos.values())
-    .sort((a, b) => b.pendente - a.pendente || b.critica - a.critica || b.alta - a.alta || b.total - a.total)
+    .sort((a, b) => b.riscoTrab - a.riscoTrab || b.pendente - a.pendente || b.total - a.total)
     .slice(0, 4);
   return summary;
 }
@@ -1018,10 +1033,32 @@ const splitBancoHorasTop = (items) => {
   };
 };
 
-const buildBancoHorasStats = (rows, eventCategories = [], storedBancoHoras = null) => {
-  if (storedBancoHoras?.totals && Number(storedBancoHoras?.count || 0) > 0) {
-    const totals = storedBancoHoras.totals;
-    const importedRows = Array.isArray(storedBancoHoras.rows) ? storedBancoHoras.rows : [];
+const buildBancoHorasStats = (rows, eventCategories = [], storedBancoHoras = null, periodo = null) => {
+  const allImportedRows = Array.isArray(storedBancoHoras?.rows) ? storedBancoHoras.rows : [];
+  const selectedFrom = normDateKey(periodo?.de);
+  const selectedTo = normDateKey(periodo?.ate);
+  const hasPeriodFilter = Boolean(selectedFrom || selectedTo);
+  const importedPeriods = allImportedRows
+    .map((row) => {
+      const from = normDateKey(row?.periodoInicial || row?.inicio || row?.data);
+      const to = normDateKey(row?.periodoFinal || row?.termino || row?.data) || from;
+      return from && to ? { from, to } : null;
+    })
+    .filter(Boolean);
+  const importedRowsAreDatedEvents =
+    importedPeriods.length > 0 && importedPeriods.every((item) => item.from === item.to);
+  const matchesImportedCompetence = importedPeriods.some(
+    (item) => item.from === selectedFrom && item.to === selectedTo,
+  );
+  const canUseImportedTotals =
+    !hasPeriodFilter || importedRowsAreDatedEvents || matchesImportedCompetence;
+
+  if (
+    canUseImportedTotals &&
+    storedBancoHoras?.totals &&
+    Number(storedBancoHoras?.count || 0) > 0
+  ) {
+    const importedRows = filterBancoHorasRowsByPeriod(allImportedRows, periodo);
     const saldoAnteriorAliases = [
       "saldoAnterior",
       "saldoAnteriorBH",
@@ -1044,6 +1081,24 @@ const buildBancoHorasStats = (rows, eventCategories = [], storedBancoHoras = nul
     ];
     const creditoAliases = ["credito", "creditoBH", "crédito", "Credito", "Crédito"];
     const debitoAliases = ["debito", "debitoBH", "débito", "Debito", "Débito"];
+    const totals = hasPeriodFilter
+      ? importedRows.reduce(
+          (acc, row) => {
+            const creditoRow = pickBancoHorasMin(row, creditoAliases) ?? 0;
+            const debitoRow = Math.abs(pickBancoHorasMin(row, debitoAliases) ?? 0);
+            const anteriorRow = pickBancoHorasMin(row, saldoAnteriorAliases);
+            const proximoRow = pickBancoHorasMin(row, saldoProximoAliases);
+            acc.credito += creditoRow;
+            acc.debito += debitoRow;
+            if (anteriorRow != null) acc.saldoAnterior += anteriorRow;
+            else if (proximoRow != null) acc.saldoAnterior += proximoRow - creditoRow + debitoRow;
+            if (proximoRow != null) acc.saldoProximo += proximoRow;
+            else acc.saldoProximo += (anteriorRow || 0) + creditoRow - debitoRow;
+            return acc;
+          },
+          { saldoAnterior: 0, credito: 0, debito: 0, saldoProximo: 0 },
+        )
+      : storedBancoHoras.totals;
     const totalsCredito = pickBancoHorasMin(totals, creditoAliases) ?? 0;
     const totalsDebito = Math.abs(pickBancoHorasMin(totals, debitoAliases) ?? 0);
     const totalsSaldoAnterior = pickBancoHorasMin(totals, saldoAnteriorAliases);
@@ -1086,8 +1141,10 @@ const buildBancoHorasStats = (rows, eventCategories = [], storedBancoHoras = nul
       debito: totalsDebito,
       saldo: saldoProximo,
       saldoProximo,
-      ocorrencias: Number(storedBancoHoras.count) || 0,
-      colaboradores: Number(storedBancoHoras.colaboradores) || 0,
+      ocorrencias: hasPeriodFilter ? importedRows.length : Number(storedBancoHoras.count) || 0,
+      colaboradores: hasPeriodFilter
+        ? new Set(importedRows.map((row) => row?.matricula || row?.nome).filter(Boolean)).size
+        : Number(storedBancoHoras.colaboradores) || 0,
       source: "import",
       topDepartamentos: topSplit.positivos.length ? topSplit.positivos : topDepartamentosAll.slice(0, 10),
       topDepartamentosPositivos: topSplit.positivos,
@@ -1622,22 +1679,18 @@ function MensalCard({ data = null }) {
 function AuditoriaPontoPanel({ summary, onOpen, onOpenParams, opening = false, inline = false }) {
   const data = summary || {};
   const total = Number(data.total || 0);
-  const pendente = Number(data.pendente || 0);
-  const critica = Number(data.critica || 0);
-  const alta = Number(data.alta || 0);
-  const tratadoPct = Number(data.tratadoPct || 0);
+  const riscoTrab = Number(data.riscoTrab || 0);
+  const extras = Number(data.extras || 0);
   const topDeptos = Array.isArray(data.topDeptos) ? data.topDeptos : [];
-  const riskTone = critica > 0 ? "critica" : alta > 0 ? "alta" : pendente > 0 ? "media" : "ok";
 
   return (
     <section
-      className={`${inline ? "pb-audit-inline" : "pb-cell pb-auditoria-ponto"} pb-auditoria-ponto--${riskTone}`}
+      className={`${inline ? "pb-audit-inline" : "pb-cell pb-auditoria-ponto"} pb-auditoria-ponto--${riscoTrab > 0 ? "risco" : total > 0 ? "media" : "ok"}`}
       aria-label="Auditoria de ponto"
     >
       <div className="pb-audit-panel-head">
         <div>
           <span className="pb-label">Auditoria de ponto</span>
-          <strong>{pendente > 0 ? `${pendente.toLocaleString("pt-BR")} pendencia${pendente === 1 ? "" : "s"}` : "Sem pendencias"}</strong>
           <em>
             {total > 0
               ? `${total.toLocaleString("pt-BR")} evento${total === 1 ? "" : "s"} com regra acionada`
@@ -1661,26 +1714,18 @@ function AuditoriaPontoPanel({ summary, onOpen, onOpenParams, opening = false, i
       </div>
 
       <div className="pb-audit-kpis">
-        <span className="is-critica">
-          <b>Criticas</b>
-          <strong>{critica.toLocaleString("pt-BR")}</strong>
+        <span>
+          <b>Auditoria</b>
+          <strong>{total.toLocaleString("pt-BR")}</strong>
         </span>
-        <span className="is-alta">
-          <b>Altas</b>
-          <strong>{alta.toLocaleString("pt-BR")}</strong>
+        <span className={riscoTrab > 0 ? "is-risco" : ""}>
+          <b>Risco trab.</b>
+          <strong>{riscoTrab.toLocaleString("pt-BR")}</strong>
         </span>
         <span>
-          <b>Ajustes folha</b>
-          <strong>{Number(data.ajuste || 0).toLocaleString("pt-BR")}</strong>
+          <b>Extras</b>
+          <strong>{extras.toLocaleString("pt-BR")}</strong>
         </span>
-        <span>
-          <b>Tratado</b>
-          <strong>{tratadoPct}%</strong>
-        </span>
-      </div>
-
-      <div className="pb-audit-progress" aria-label={`Tratado ${tratadoPct}%`}>
-        <span style={{ width: `${Math.max(0, Math.min(100, tratadoPct))}%` }} />
       </div>
 
       <div className="pb-audit-panel-body">
@@ -1688,14 +1733,14 @@ function AuditoriaPontoPanel({ summary, onOpen, onOpenParams, opening = false, i
           <b>Maior risco</b>
           {data.principal ? (
             <>
-              <strong>{data.principal.observacao || data.principal.severidade}</strong>
+              <strong>{data.principal.observacao || data.principal.categoria || ""}</strong>
               <span>
                 {data.principal.departamento}
-                {data.principal.colaborador ? ` - ${data.principal.colaborador}` : ""}
+                {data.principal.colaborador ? ` — ${data.principal.colaborador}` : ""}
               </span>
             </>
           ) : (
-            <span>Sem risco pendente no filtro atual.</span>
+            <span>Sem anomalia registrada no periodo.</span>
           )}
         </div>
 
@@ -1712,11 +1757,11 @@ function AuditoriaPontoPanel({ summary, onOpen, onOpenParams, opening = false, i
                 aria-busy={opening ? "true" : undefined}
               >
                 <span>{row.label}</span>
-                <strong>{opening ? "..." : Number(row.pendente || row.total || 0).toLocaleString("pt-BR")}</strong>
+                <strong>{opening ? "..." : Number(row.riscoTrab || row.total || 0).toLocaleString("pt-BR")}</strong>
               </button>
             ))
           ) : (
-            <span className="pb-audit-empty">Sem departamentos com pendencias.</span>
+            <span className="pb-audit-empty">Sem anomalias no periodo.</span>
           )}
         </div>
       </div>
@@ -4050,7 +4095,7 @@ export function PosicaoBentoHeader({
     dia,
     histData,
   ]);
-  const dashboardApiData = useDashboardApiData({ periodo: periodoApuracao });
+
 
   const openHistTableModal = useCallback((opts = {}) => {
     setRadarWorkspaceOpen(false);
@@ -4379,6 +4424,14 @@ export function PosicaoBentoHeader({
       to: dates[dates.length - 1] || "",
     };
   }, [histRows]);
+  const activeDashboardPeriod = useMemo(
+    () => ({
+      de: normDateKey(histDateFrom) || activeHistDateRange.from || normDateKey(periodoApuracao?.de),
+      ate: normDateKey(histDateTo) || activeHistDateRange.to || normDateKey(periodoApuracao?.ate),
+    }),
+    [histDateFrom, histDateTo, activeHistDateRange.from, activeHistDateRange.to, periodoApuracao],
+  );
+  const dashboardApiData = useDashboardApiData({ periodo: activeDashboardPeriod });
   const openHistTableModalForActivePeriod = useCallback(
     (opts = {}) => {
       openHistTableModal({
@@ -4535,8 +4588,8 @@ export function PosicaoBentoHeader({
     [onOpenMensalEventColaboradores],
   );
   const bancoHorasStats = useMemo(
-    () => dashboardApiData.bancoHorasStats || buildBancoHorasStats(histRows, loadEventCategories(), storedBancoHoras),
-    [dashboardApiData.bancoHorasStats, histRows, cfgOpen, storedBancoHoras],
+    () => dashboardApiData.bancoHorasStats || buildBancoHorasStats(histRows, loadEventCategories(), storedBancoHoras, activeDashboardPeriod),
+    [dashboardApiData.bancoHorasStats, histRows, cfgOpen, storedBancoHoras, activeDashboardPeriod],
   );
   const abonosStoredEffective = dashboardApiData.abonosStored || storedAbonos;
   const mensalData = dashboardApiData.mensalData || storedMensal;
@@ -6452,28 +6505,9 @@ export function PosicaoBentoHeader({
           document.body,
         )}
       <div className="pb-topbar">
-        <SearchableSelect
-          value={filialValue}
-          options={filialOptions}
-          placeholder="Todas as filiais"
-          ariaLabel="Filtrar por filial"
-          onChange={(v) => onFilialChange && onFilialChange(v)}
-        />
-
-        <SearchableSelect
-          value={deptoValue}
-          options={deptoOptions}
-          placeholder="Todos os departamentos"
-          ariaLabel="Filtrar por departamento"
-          onChange={(v) => onDeptoChange && onDeptoChange(v)}
-        />
-
-        {empList.length > 0 && (
-          <EmpFilter empList={empList} value={selectedEmp} onChange={setSelectedEmp} />
-        )}
 
         <div
-          className="pb-apuracao-info"
+          className="pb-apuracao-info pb-apuracao-info--left"
           title="Período de apuração retornado pela API"
           aria-label="Período de apuração"
         >
@@ -6484,17 +6518,53 @@ export function PosicaoBentoHeader({
           </span>
         </div>
 
-        <button
-          type="button"
-          className="pb-btn pb-btn-clear-filters"
-          onClick={handleClearFilters}
-          disabled={!hasActiveFilters}
-          title="Limpar filtros de filial, departamento, colaborador e período personalizado"
-        >
-          Limpar filtros
-        </button>
+        <div className="pb-trend-band pb-trend-band--topbar">
+          <div className="pb-trend-tabs" role="tablist" aria-label="Período">
+            <button
+              type="button"
+              className={`pb-trend-tab ${faltDays === PB_FALT_DAYS_ATUAL && !histDateFrom && !histDateTo ? "is-active" : ""}`}
+              onClick={() => selectFaltDays(PB_FALT_DAYS_ATUAL)}
+              aria-pressed={faltDays === PB_FALT_DAYS_ATUAL && !histDateFrom && !histDateTo}
+              title="Período de apuração atual (API)"
+            >
+              Período atual
+            </button>
+            <button
+              type="button"
+              className={`pb-trend-tab ${faltDays === 7 && !histDateFrom && !histDateTo ? "is-active" : ""}`}
+              onClick={() => selectFaltDays(7)}
+              aria-pressed={faltDays === 7 && !histDateFrom && !histDateTo}
+            >
+              7d
+            </button>
+            <button
+              type="button"
+              className={`pb-trend-tab ${faltDays === 15 && !histDateFrom && !histDateTo ? "is-active" : ""}`}
+              onClick={() => selectFaltDays(15)}
+              aria-pressed={faltDays === 15 && !histDateFrom && !histDateTo}
+            >
+              15d
+            </button>
+            <button
+              type="button"
+              className={`pb-trend-tab ${faltDays === 30 && !histDateFrom && !histDateTo ? "is-active" : ""}`}
+              onClick={() => selectFaltDays(30)}
+              aria-pressed={faltDays === 30 && !histDateFrom && !histDateTo}
+            >
+              30d
+            </button>
+            <button
+              type="button"
+              className={`pb-trend-tab pb-periodos-tab${histDateFrom || histDateTo ? " is-active" : ""}`}
+              onClick={() => openHistTableModalForActivePeriod()}
+              title="Selecionar período personalizado"
+            >
+              Outros períodos
+            </button>
+          </div>
+        </div>
 
-        <div className="pb-topbar-sep" aria-hidden="true" />
+        <div className="pb-topbar-sep pb-topbar-sep--grow" aria-hidden="true" />
         <button
           type="button"
           className="pb-btn pb-btn-theme"
@@ -6949,54 +7019,7 @@ export function PosicaoBentoHeader({
         <div className="pb-cell pb-unified-chart">
           <div className="pb-trend-head">
             <div className="pb-trend-head-main">
-              <span className="pb-label pb-trend-title">Absenteísmo</span>
               <div className="pb-trend-toolbar">
-                <div className="pb-trend-band">
-                  <span className="pb-trend-band-label">Período</span>
-                  <div className="pb-trend-tabs" role="tablist" aria-label="Período">
-                <button
-                  type="button"
-                  className={`pb-trend-tab ${faltDays === PB_FALT_DAYS_ATUAL && !histDateFrom && !histDateTo ? "is-active" : ""}`}
-                  onClick={() => selectFaltDays(PB_FALT_DAYS_ATUAL)}
-                  aria-pressed={faltDays === PB_FALT_DAYS_ATUAL && !histDateFrom && !histDateTo}
-                  title="Período de apuração atual (API)"
-                >
-                  Período atual
-                </button>
-                <button
-                  type="button"
-                  className={`pb-trend-tab ${faltDays === 7 && !histDateFrom && !histDateTo ? "is-active" : ""}`}
-                  onClick={() => selectFaltDays(7)}
-                  aria-pressed={faltDays === 7 && !histDateFrom && !histDateTo}
-                >
-                  7d
-                </button>
-                <button
-                  type="button"
-                  className={`pb-trend-tab ${faltDays === 15 && !histDateFrom && !histDateTo ? "is-active" : ""}`}
-                  onClick={() => selectFaltDays(15)}
-                  aria-pressed={faltDays === 15 && !histDateFrom && !histDateTo}
-                >
-                  15d
-                </button>
-                <button
-                  type="button"
-                  className={`pb-trend-tab ${faltDays === 30 && !histDateFrom && !histDateTo ? "is-active" : ""}`}
-                  onClick={() => selectFaltDays(30)}
-                  aria-pressed={faltDays === 30 && !histDateFrom && !histDateTo}
-                >
-                  30d
-                </button>
-                <button
-                  type="button"
-                  className={`pb-trend-tab pb-periodos-tab${histDateFrom || histDateTo ? " is-active" : ""}`}
-                  onClick={() => openHistTableModalForActivePeriod()}
-                  title="Selecionar período personalizado"
-                >
-                  Outros períodos
-                </button>
-                  </div>
-                </div>
                 <div className="pb-trend-band pb-trend-band--views">
                   <span className="pb-trend-band-label">Visualização</span>
                   <div className="pb-trend-tabs" role="tablist" aria-label="Visualização">
@@ -7054,15 +7077,6 @@ export function PosicaoBentoHeader({
                     >
                       DataView
                     </a>
-                    <button
-                      type="button"
-                      className={`pb-trend-tab pb-trend-tab--audit${auditoriaWorkspaceOpen ? " is-active" : ""}`}
-                      onClick={openAuditoriaWorkspace}
-                      title="Abrir painel executivo de auditoria"
-                      aria-pressed={auditoriaWorkspaceOpen}
-                    >
-                      Painel auditoria
-                    </button>
                   </div>
                   <DashboardNlAskPanel
                     context={dashboardNlContext}
@@ -7359,18 +7373,6 @@ export function PosicaoBentoHeader({
                 onOpenTableCol={openHistTableCol}
                 onOpenConsecFaltas={openConsecFaltasModal}
               />
-              <div className="pb-radar-footer">
-                <span className="pb-radar-footer-meta">
-                  {histDateFrom || histDateTo ?
-                     `Período ${fmtShortDate(histDateFrom || histRows[0]?.date)} – ${fmtShortDate(histDateTo || histRows[histRows.length - 1]?.date)}`
-                    : faltDays === PB_FALT_DAYS_ATUAL && periodoApuracao.de && periodoApuracao.ate ?
-                       `Período atual (${fmtDateBr(periodoApuracao.de)} – ${fmtDateBr(periodoApuracao.ate)})`
-                      : `Últimos ${faltDays} dias`}
-                </span>
-                <button type="button" className="pb-btn" onClick={() => openHistTableInline()}>
-                  Ver tabela detalhada
-                </button>
-              </div>
             </div>
           ) : showHistChart ? (
             <div className="pb-hist-chart-panel">
@@ -7763,6 +7765,7 @@ export function PosicaoBentoHeader({
           filteredDia={filteredDia}
           histRows={histRows}
           storedOverride={abonosStoredEffective}
+          periodo={activeDashboardPeriod}
           onOpenDeptColaboradores={onOpenAbonosDeptColaboradores}
         />
         <BancoHorasCard

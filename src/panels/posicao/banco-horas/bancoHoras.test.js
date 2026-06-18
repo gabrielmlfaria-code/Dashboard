@@ -4,6 +4,7 @@ import {
   buildBancoHorasRowsFromHistEvents,
   diagnoseBancoHorasSheet,
   formatBancoHorasImportSummary,
+  filterBancoHorasRowsByPeriod,
   getBancoHorasImportRows,
   normalizeBancoHorasRows,
   parseBancoHorasDate,
@@ -206,5 +207,17 @@ describe("buildBancoHorasRowsFromHistEvents", () => {
     assert.equal(rows.length, 1);
     assert.equal(rows[0].matricula, "533");
     assert.equal(getBancoHorasImportRows(null, hist).length, 1);
+  });
+});
+
+describe("filterBancoHorasRowsByPeriod", () => {
+  it("mantem apenas competencias que cruzam o periodo selecionado", () => {
+    const rows = [
+      { matricula: "1", periodoInicial: "2026-04-21", periodoFinal: "2026-05-20" },
+      { matricula: "2", periodoInicial: "2026-05-21", periodoFinal: "2026-06-20" },
+      { matricula: "3", periodoInicial: "2026-07-01", periodoFinal: "2026-07-31" },
+    ];
+    const filtered = filterBancoHorasRowsByPeriod(rows, { de: "2026-05-05", ate: "2026-05-31" });
+    assert.deepEqual(filtered.map((row) => row.matricula), ["1", "2"]);
   });
 });
