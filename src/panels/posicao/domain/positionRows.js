@@ -30,6 +30,25 @@ function normalizeGender(value) {
   return text;
 }
 
+export function resolveIdDepartamento(record) {
+  return record?.idDepartamento ?? record?.deptoId ?? record?.id_departamento ?? null;
+}
+
+export function resolveDeptoNome(record) {
+  return record?.depto_desc || record?.depto || record?.departamento || record?.nome || "";
+}
+
+export function matchesDeptoFilter(record, deptoFilter, { nomeToId = {} } = {}) {
+  if (!deptoFilter) return true;
+  const id = resolveIdDepartamento(record);
+  if (id != null && String(id) === String(deptoFilter)) return true;
+  // fallback por nome (legado/import)
+  const nome = resolveDeptoNome(record);
+  const mappedId = nome ? nomeToId[nome] : null;
+  if (mappedId != null && String(mappedId) === String(deptoFilter)) return true;
+  return false;
+}
+
 export function normalizePositionEmployee(raw, { category = "presentes", index = 0, date = "" } = {}) {
   const cat = normalizePositionCategory(raw?.cat || raw?.categoria || category, category);
   const hours = getPositionCategoryHours(cat);
@@ -62,6 +81,9 @@ export function normalizePositionEmployee(raw, { category = "presentes", index =
     data,
     depto,
     departamento: depto,
+    idDepartamento: raw?.idDepartamento ?? raw?.deptoId ?? null,
+    filialId:
+      raw?.filialId ?? raw?.filial_id ?? raw?.filial?.id ?? raw?.filial?.codigo ?? undefined,
     filial: firstText(raw, ["filial", "filialNome", "filial_nome"]),
     cargo,
     genero: normalizeGender(raw?.genero ?? raw?.sexo),

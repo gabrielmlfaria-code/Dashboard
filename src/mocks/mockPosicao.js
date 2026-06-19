@@ -65,7 +65,22 @@ export async function mockHistoricoFromPlanilha({ days = 180 } = {}) {
     });
 }
 
+export async function mockFiliaisFromPlanilha() {
+  const rows = await loadHistTableImportMerged();
+  const names = new Set();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    for (const item of [...(row?._employees || []), ...(row?._events || [])]) {
+      const nome = String(item?.filial || item?.filialNome || "").trim();
+      if (nome) names.add(nome);
+    }
+  }
+  return [...names]
+    .sort((a, b) => a.localeCompare(b, "pt-BR"))
+    .map((nome, index) => ({ id: index + 1, codigo: index + 1, nome, label: `${index + 1} - ${nome}` }));
+}
+
 export function ensureMockPosicao() {
+  ApiService.registerMock("/posicao/filiais", () => mockFiliaisFromPlanilha());
   ApiService.registerMock("/posicao/dia", (p) => mockDiaFromPlanilha(p?.date));
   ApiService.registerMock("/posicao/historico", (p) => mockHistoricoFromPlanilha(p));
 }

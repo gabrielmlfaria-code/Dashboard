@@ -10,10 +10,10 @@ function pickParams(obj) {
 }
 
 export const TurnoverApi = {
-  getResumo({ de, ate, competenciaInicial, competenciaFinal } = {}) {
+  getResumo({ de, ate, competenciaInicial, competenciaFinal, filialId } = {}) {
     return ApiService.call(
       ApiRoutes.turnover.resumo,
-      pickParams({ de, ate, competenciaInicial, competenciaFinal }),
+      pickParams({ de, ate, competenciaInicial, competenciaFinal, filialId }),
       { module: "turnover" },
     );
   },

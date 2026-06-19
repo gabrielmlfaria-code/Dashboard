@@ -1691,11 +1691,6 @@ function AuditoriaPontoPanel({ summary, onOpen, onOpenParams, opening = false, i
       <div className="pb-audit-panel-head">
         <div>
           <span className="pb-label">Auditoria de ponto</span>
-          <em>
-            {total > 0
-              ? `${total.toLocaleString("pt-BR")} evento${total === 1 ? "" : "s"} com regra acionada`
-              : "Nenhuma anomalia no periodo filtrado"}
-          </em>
         </div>
         <div className="pb-audit-panel-actions">
           <button type="button" className="pb-btn" onClick={onOpenParams}>
@@ -3872,6 +3867,7 @@ export function PosicaoBentoHeader({
   filialOptions = [],
   deptoOptions = [],
   filialValue = "",
+  filialLabel = "",
   deptoValue = "",
   onFilialChange,
   onDeptoChange,
@@ -3886,6 +3882,13 @@ export function PosicaoBentoHeader({
   onOpenDept,
   forcaPrevistaDeptoMap = null,
   onSaveForcaPrevistaDeptoMap,
+  fpdMap: fpdMapProp = {},
+  fpdList = [],
+  fpdSaving = false,
+  onSaveFpd,
+  onExcluirFpdDepto,
+  onLimparFpd,
+  departamentosApi = [],
   onImportXlsx,
   importBusy = false,
   importOverrides = null,
@@ -4431,7 +4434,10 @@ export function PosicaoBentoHeader({
     }),
     [histDateFrom, histDateTo, activeHistDateRange.from, activeHistDateRange.to, periodoApuracao],
   );
-  const dashboardApiData = useDashboardApiData({ periodo: activeDashboardPeriod });
+  const dashboardApiData = useDashboardApiData({
+    periodo: activeDashboardPeriod,
+    filialId: filialValue,
+  });
   const openHistTableModalForActivePeriod = useCallback(
     (opts = {}) => {
       openHistTableModal({
@@ -5077,23 +5083,23 @@ export function PosicaoBentoHeader({
   const openSaudePreventivaView = useCallback(() => {
     const opened = openSaudePreventivaInNewTab({
       periodoLabel: histPeriodLabel,
-      empresaLabel: resolveEmpresaLabel(histRows, filialValue),
+      empresaLabel: resolveEmpresaLabel(histRows, filialLabel),
       histRows,
     });
     if (!opened) {
       Toast.show("Permita pop-ups para abrir o módulo em nova guia.", "w", 4000);
     }
-  }, [histPeriodLabel, histRows, filialValue]);
+  }, [histPeriodLabel, histRows, filialLabel]);
 
   const openNr1View = useCallback(() => {
     const opened = openNr1InNewTab({
-      empresaLabel: resolveEmpresaLabel(histRows, filialValue),
+      empresaLabel: resolveEmpresaLabel(histRows, filialLabel),
       histRows,
     });
     if (!opened) {
       Toast.show("Permita pop-ups para abrir o módulo NR-1 em nova guia.", "w", 4000);
     }
-  }, [histRows, filialValue]);
+  }, [histRows, filialLabel]);
 
   const dashboardNlContext = useMemo(
     () =>
@@ -6220,15 +6226,26 @@ export function PosicaoBentoHeader({
       return next;
     });
   };
-  const handleFpdSave = () => {
+  const handleFpdSave = async () => {
     const merged = applyFpdDrafts(fpdMap);
     setFpdMap(merged);
     setFpdMoneyDraft({});
-    onSaveForcaPrevistaDeptoMap &&
-      onSaveForcaPrevistaDeptoMap(serializeForcaPrevistaDeptoMap(merged));
+    // Tenta salvar via API primeiro; fallback para localStorage
+    if (onSaveFpd) {
+      try {
+        await onSaveFpd(merged);
+      } catch {
+        // fallback: persiste localmente
+        onSaveForcaPrevistaDeptoMap &&
+          onSaveForcaPrevistaDeptoMap(serializeForcaPrevistaDeptoMap(merged));
+      }
+    } else {
+      onSaveForcaPrevistaDeptoMap &&
+        onSaveForcaPrevistaDeptoMap(serializeForcaPrevistaDeptoMap(merged));
+    }
     setFpdOpen(false);
   };
-  const handleFpdClearDepto = (depto) => {
+  const handleFpdClearDepto = async (depto) => {
     setFpdMap((prev) => {
       const next = { ...(prev || {}) };
       delete next[depto];
@@ -6241,10 +6258,30 @@ export function PosicaoBentoHeader({
       });
       return next;
     });
+    // Tenta excluir via API se houver idDepartamento no fpdMapProp
+    if (onExcluirFpdDepto) {
+      const entries = Array.isArray(fpdList) ? fpdList : [];
+      const found = entries.find((d) => (d.nome || "") === depto);
+      const idDept = found?.id ?? found?.idDepartamento ?? null;
+      if (idDept != null) {
+        try {
+          await onExcluirFpdDepto(idDept);
+        } catch {
+          // ignora: estado local já foi atualizado
+        }
+      }
+    }
   };
-  const handleFpdClearAll = () => {
+  const handleFpdClearAll = async () => {
     setFpdMap({});
     setFpdMoneyDraft({});
+    if (onLimparFpd) {
+      try {
+        await onLimparFpd();
+      } catch {
+        // ignora: estado local já foi limpo
+      }
+    }
   };
 
   return (
@@ -6565,6 +6602,20 @@ export function PosicaoBentoHeader({
         </div>
 
         <div className="pb-topbar-sep pb-topbar-sep--grow" aria-hidden="true" />
+        <select
+          className="pb-btn"
+          value={filialValue}
+          onChange={(event) => onFilialChange?.(event.target.value)}
+          aria-label="Filtrar por filial"
+          title="Filtrar por filial"
+        >
+          <option value="">Todas as filiais</option>
+          {filialOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
         <button
           type="button"
           className="pb-btn pb-btn-theme"
@@ -8079,6 +8130,7 @@ export function PosicaoBentoHeader({
             enabled: true,
             de: chartDayModal.eventsDateFrom || histDateFrom,
             ate: chartDayModal.eventsDateTo || histDateTo,
+            filialId: filialValue || undefined,
           }}
           eventsDateFrom={chartDayModal.eventsDateFrom}
           eventsDateTo={chartDayModal.eventsDateTo}

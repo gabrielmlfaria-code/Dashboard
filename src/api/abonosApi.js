@@ -18,18 +18,18 @@ export const AbonosApi = {
     );
   },
 
-  getDepartamentos({ de, ate, status, top = 10 } = {}) {
+  getDepartamentos({ de, ate, status, filialId, top = 10 } = {}) {
     return ApiService.call(
       ApiRoutes.abonos.departamentos,
-      pickParams({ de, ate, status, top }),
+      pickParams({ de, ate, status, filialId, top }),
       { module: "abonos" },
     );
   },
 
-  getColaboradores({ de, ate, status, departamento, page = 1, pageSize = 200 } = {}) {
+  getColaboradores({ de, ate, status, filialId, departamento, page = 1, pageSize = 200 } = {}) {
     return ApiService.call(
       ApiRoutes.abonos.colaboradores,
-      pickParams({ de, ate, status, departamento, page, pageSize }),
+      pickParams({ de, ate, status, filialId, departamento, page, pageSize }),
       { module: "abonos" },
     );
   },

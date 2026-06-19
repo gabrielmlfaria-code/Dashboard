@@ -95,9 +95,9 @@ export function normalizeForcaPrevistaDeptoMap(raw) {
 }
 
 export function getForcaPrevistaQty(entry) {
-  if (typeof entry === "number") return Number.isFinite(entry) && entry > 0 ? entry : null;
+  if (typeof entry === "number") return Number.isFinite(entry) && entry > 0 ? entry : 0;
   const n = Number(entry?.prevista);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 export function serializeForcaPrevistaDeptoMap(map) {

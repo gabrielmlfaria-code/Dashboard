@@ -10,10 +10,10 @@ function pickParams(obj) {
 }
 
 export const FechamentoMensalApi = {
-  getEventos({ de, ate, competencia } = {}) {
+  getEventos({ de, ate, competencia, filialId } = {}) {
     return ApiService.call(
       ApiRoutes.fechamentoMensal.eventos,
-      pickParams({ de, ate, competencia }),
+      pickParams({ de, ate, competencia, filialId }),
       { module: "mensal" },
     );
   },

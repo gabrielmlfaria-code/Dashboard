@@ -18632,6 +18632,67 @@
 .pb-audit-fast-group-row strong {
   font-size: 12px;
 }
+
+/* Separacao cromatica dos paineis executivos - tema claro */
+.pos-bento[data-theme="light"] .pb-radar-hours-face {
+  background: #ffffff;
+  border-color: #dbe3ee;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+.pos-bento[data-theme="light"] .pb-radar-hours-face-item {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+.pos-bento[data-theme="light"] .pb-audit-inline,
+.pos-bento[data-theme="light"] .pb-cell.pb-auditoria-ponto {
+  background: #fff7f7;
+  border-color: #fecaca;
+  border-left: 3px solid #f97316;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.pos-bento .pb-audit-panel-head .pb-label,
+.pos-bento .pb-finance-head > div:first-child > span {
+  color: var(--pb-text);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.045em;
+  line-height: 1.2;
+}
+
+.pos-bento .pb-audit-panel-actions .pb-btn-primary {
+  border-color: #f97316 !important;
+  background: #f97316 !important;
+  color: #ffffff !important;
+}
+
+.pos-bento .pb-audit-panel-actions .pb-btn-primary:hover,
+.pos-bento .pb-audit-panel-actions .pb-btn-primary:focus-visible {
+  border-color: #ea580c !important;
+  background: #ea580c !important;
+  color: #ffffff !important;
+}
+
+.pos-bento[data-theme="light"] .pb-finance-view {
+  background: #f2fbfa;
+  border-color: #99e3d8;
+  border-left: 3px solid #14b8a6;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.pos-bento[data-theme="light"] .pb-cell.pb-banco-horas {
+  background: #f5f8ff;
+  border-color: #c7d7f4;
+  border-left: 3px solid #3b82f6;
+}
+
+.pos-bento[data-theme="light"] .pb-cell.pb-abonos {
+  background: #f8f6ff;
+  border-color: #ddd6fe;
+  border-left: 3px solid #8b5cf6;
+}
 .pb-audit-fast-group-row span,
 .pb-audit-fast-group-row em {
   font-size: 10px;

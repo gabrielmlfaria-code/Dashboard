@@ -20,6 +20,7 @@ function periodParams(periodo = {}) {
   return {
     de: periodo.de,
     ate: periodo.ate,
+    filialId: periodo.filialId,
   };
 }
 
@@ -32,19 +33,19 @@ export const BancoHorasApi = {
     });
   },
 
-  getDepartamentos({ de, ate, top = 10 } = {}) {
-    return ApiService.call("/banco-horas/departamentos", { de, ate, top }, {
+  getDepartamentos({ de, ate, filialId, top = 10 } = {}) {
+    return ApiService.call("/banco-horas/departamentos", { de, ate, filialId, top }, {
       module: "bancoHoras",
       schema: BancoHorasDepartamentoListSchema,
       label: "Banco de Horas - departamentos",
     });
   },
 
-  getColaboradores({ de, ate, departamento, ...pageRequest } = {}) {
+  getColaboradores({ de, ate, filialId, departamento, ...pageRequest } = {}) {
     const page = PageRequestSchema.parse(pageRequest);
     return ApiService.call(
       "/banco-horas/colaboradores",
-      { de, ate, departamento, ...page },
+      { de, ate, filialId, departamento, ...page },
       {
         module: "bancoHoras",
         schema: BancoHorasColaboradorPageSchema,
@@ -53,4 +54,3 @@ export const BancoHorasApi = {
     );
   },
 };
-

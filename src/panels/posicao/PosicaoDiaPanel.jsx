@@ -5,7 +5,22 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { CONFIG } from "../../configLocal.js";
 import { Toast } from "../../core/toast.js";
-import { usePosicaoDia, usePosicaoHistorico, POSICAO_KEYS } from "../../hooks/usePosicao.js";
+import {
+  usePosicaoDia,
+  usePosicaoFiliais,
+  usePosicaoHistorico,
+  POSICAO_KEYS,
+  useForcaPrevistaDepartamentos,
+  useSalvarForcaPrevista,
+  useExcluirForcaPrevistaDepto,
+  useLimparForcaPrevista,
+} from "../../hooks/usePosicao.js";
+import {
+  forcaPrevistaListToMap,
+  computeQuadroForcaAtualFromDepartamentos,
+  computeQuadroForcaPrevistaFromDepartamentos,
+  computeQuadroForcaPrevista,
+} from "../../api/forcaPrevistaAdapters.js";
 import { PosicaoBentoHeader } from "./PosicaoBentoHeader.jsx";
 import { HistoricoDayModal } from "./HistoricoDayModal.jsx";
 import "./HistoricoDayModal.css";
@@ -48,7 +63,7 @@ import { resetPosEmbeddedBucketSearch } from "./posicaoHdmEmbeddedCols.js";
 import { normalizeForcaPrevistaDeptoMap, getForcaPrevistaQty } from "./posicaoSettings.js";
 import { importCctPdfFiles } from "./posicaoCctStorage.js";
 import { summarizePositionDay } from "./domain/positionMetrics.js";
-import { normalizePositionEmployeesFromDay } from "./domain/positionRows.js";
+import { normalizePositionEmployeesFromDay, matchesDeptoFilter } from "./domain/positionRows.js";
 import {
   exportPosicaoBackup,
   importPosicaoBackupFile,
@@ -215,6 +230,7 @@ const filterBancoHorasRowsByKpi = (rows, kpi) => {
 
 export function PosicaoDiaPanel() {
   const queryClient = useQueryClient();
+  const filiaisQuery = usePosicaoFiliais();
 
   const [presentesDate, setPresentesDate] = useState(() => {
     try {
@@ -825,6 +841,21 @@ export function PosicaoDiaPanel() {
     } catch {}
   }, [deptoFilter]);
 
+  // ---- FPD: Força Prevista por Departamento (API) ----
+  const filialIdNum = filialFilter ? Number(filialFilter) : undefined;
+  const fpdQuery = useForcaPrevistaDepartamentos({
+    idFilial: filialIdNum || undefined,
+    date: presentesDate || undefined,
+  });
+  const salvarFpdMutation = useSalvarForcaPrevista();
+  const excluirFpdMutation = useExcluirForcaPrevistaDepto();
+  const limparFpdMutation = useLimparForcaPrevista();
+
+  const { map: fpdMap, nomeToId: fpdNomeToId } = useMemo(
+    () => forcaPrevistaListToMap(Array.isArray(fpdQuery.data) ? fpdQuery.data : []),
+    [fpdQuery.data],
+  );
+
   // Tema (claro/escuro)
   const [theme, setTheme] = useState(() => {
     try {
@@ -896,7 +927,7 @@ export function PosicaoDiaPanel() {
     };
   }, [openRadarToCct, openRadarWorkspace]);
 
-  // Configuração: força de trabalho prevista por departamento
+  // Configuração: força de trabalho prevista por departamento (legado localStorage — mantido para compatibilidade com BentoHeader)
   const [forcaPrevistaDeptoMap, setForcaPrevistaDeptoMap] = useState(() => {
     try {
       const raw = localStorage.getItem("mp_forca_prevista_depto");
@@ -910,12 +941,40 @@ export function PosicaoDiaPanel() {
       localStorage.setItem("mp_forca_prevista_depto", JSON.stringify(forcaPrevistaDeptoMap || {}));
     } catch {}
   }, [forcaPrevistaDeptoMap]);
-  // Migração: descarta a antiga config global (se existir)
+  // Limpeza: descarta configs obsoletas de FPD do localStorage
   useEffect(() => {
     try {
       localStorage.removeItem("mp_forca_prevista");
+      localStorage.removeItem("mp_forca_prevista_depto");
     } catch {}
   }, []);
+
+  // ---- Handlers FPD (API) ----
+  const handleSaveFpd = useCallback(
+    async (map) => {
+      await salvarFpdMutation.mutateAsync({
+        idFilial: filialIdNum,
+        itens: Object.values(map).map((v) => ({
+          idDepartamento: v.idDepartamento,
+          prevista: v.prevista,
+          custoHora: v.custoHora ?? 0,
+          custoHExtra: v.custoHExtra ?? 0,
+        })),
+      });
+    },
+    [salvarFpdMutation, filialIdNum],
+  );
+
+  const handleExcluirFpdDepto = useCallback(
+    async (idDepartamento) => {
+      await excluirFpdMutation.mutateAsync(idDepartamento);
+    },
+    [excluirFpdMutation],
+  );
+
+  const handleLimparFpd = useCallback(async () => {
+    await limparFpdMutation.mutateAsync(filialIdNum);
+  }, [limparFpdMutation, filialIdNum]);
 
   // Importar XLSX a partir do modal de Configurações (header)
   const [importBusy, setImportBusy] = useState(false);
@@ -1162,27 +1221,37 @@ export function PosicaoDiaPanel() {
     [],
   );
 
-  const filialOptions = useMemo(() => {
-    const set = new Set();
-    if (dia) {
-      POSICAO_CATEGORIES.forEach((k) => {
-        const arr = Array.isArray(dia?.[k]?.colaboradores) ? dia[k].colaboradores : [];
-        arr.forEach((c) => {
-          const v = (c?.filial || "").trim();
-          if (v) set.add(v);
-        });
-      });
-    }
-    if (Array.isArray(histTableImport)) {
-      histTableImport.forEach((row) => {
-        (row._employees || []).forEach((emp) => {
-          const v = (emp.filial || "").trim();
-          if (v) set.add(v);
-        });
-      });
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [dia, histTableImport]);
+  const filialOptions = useMemo(
+    () =>
+      (Array.isArray(filiaisQuery.data) ? filiaisQuery.data : [])
+        .filter((filial) => filial?.id != null)
+        .map((filial) => ({
+          value: filial.id,
+          label: String(filial.label || "").trim(),
+          nome: String(filial.nome || "").trim(),
+        }))
+        .filter((option) => option.label),
+    [filiaisQuery.data],
+  );
+  const selectedFilialOption = useMemo(
+    () => filialOptions.find((option) => String(option.value) === String(filialFilter)),
+    [filialOptions, filialFilter],
+  );
+  const selectedFilialLabel =
+    selectedFilialOption?.nome || selectedFilialOption?.label?.replace(/^\s*\d+\s*-\s*/, "") || "";
+  const matchesFilial = useCallback(
+    (record) => {
+      if (!filialFilter) return true;
+      const recordId =
+        record?.filialId ?? record?.filial_id ?? record?.filial?.id ?? record?._raw?.filialId;
+      if (recordId != null) return String(recordId) === String(filialFilter);
+      return Boolean(
+        selectedFilialLabel &&
+          String(record?.filial || record?.filialNome || "").trim() === selectedFilialLabel,
+      );
+    },
+    [filialFilter, selectedFilialLabel],
+  );
 
   const deptoOptions = useMemo(() => {
     const set = new Set();
@@ -1207,25 +1276,32 @@ export function PosicaoDiaPanel() {
   }, [dia, histTableImport]);
 
   // Reseta filtro de depto se a filial muda e o depto não existe mais
+  // Só limpa se for filtro por nome (legado) — ids numéricos não constam em deptoOptions (nomes)
   useEffect(() => {
-    if (deptoFilter && !deptoOptions.includes(deptoFilter)) setDeptoFilter("");
+    if (!deptoFilter) return;
+    // se for um id numérico, não limpamos (será resolvido pelo matchesDeptoFilter)
+    if (/^\d+$/.test(String(deptoFilter))) return;
+    if (!deptoOptions.includes(deptoFilter)) setDeptoFilter("");
   }, [deptoOptions, deptoFilter]);
   useEffect(() => {
-    if (filialFilter && !filialOptions.includes(filialFilter)) setFilialFilter("");
-  }, [filialOptions, filialFilter]);
+    if (
+      filialFilter &&
+      filiaisQuery.isSuccess &&
+      !filialOptions.some((option) => String(option.value) === String(filialFilter))
+    ) {
+      setFilialFilter("");
+    }
+  }, [filialOptions, filialFilter, filiaisQuery.isSuccess]);
 
   const matchesFilters = useCallback(
     (c) => {
       if (filialFilter) {
-        if ((c?.filial || "").trim() !== filialFilter) return false;
+        if (!matchesFilial(c)) return false;
       }
-      if (deptoFilter) {
-        const d = (c?.depto_desc || c?.depto || "").toString().trim();
-        if (d !== deptoFilter) return false;
-      }
+      if (!matchesDeptoFilter(c, deptoFilter, { nomeToId: fpdNomeToId })) return false;
       return true;
     },
-    [filialFilter, deptoFilter],
+    [filialFilter, deptoFilter, matchesFilial, fpdNomeToId],
   );
 
   const filteredDia = useMemo(() => {
@@ -1292,8 +1368,15 @@ export function PosicaoDiaPanel() {
       dateTo: posListDateTo || posListDateFrom || presentesDate,
       posListKey,
       filialFilter: posListFilialFilter,
+      filialFilterLabel:
+        filialOptions.find((option) => String(option.value) === String(posListFilialFilter))?.nome ||
+        filialOptions
+          .find((option) => String(option.value) === String(posListFilialFilter))
+          ?.label?.replace(/^\s*\d+\s*-\s*/, "") ||
+        "",
       deptoFilter: posListDeptoFilter,
       eventCategories: loadEventCategories(),
+      fpdNomeToId,
     });
   }, [
     filteredDia,
@@ -1306,6 +1389,7 @@ export function PosicaoDiaPanel() {
     posListFilialFilter,
     posListDeptoFilter,
     posListOverrideEvents,
+    filialOptions,
   ]);
 
   const posListTitle = useMemo(() => {
@@ -1949,7 +2033,7 @@ export function PosicaoDiaPanel() {
         (r.entrada_prev || 0) +
         (r.nao_controla || 0);
       const cadastrada = getForcaPrevistaQty(fpd[r.depto]);
-      const prevista_cadastrada = cadastrada != null ? cadastrada : null;
+      const prevista_cadastrada = cadastrada > 0 ? cadastrada : null;
       const prevista = prevista_cadastrada != null ? prevista_cadastrada : atual;
       const vagas = Math.max(0, prevista - atual);
       return { ...r, atual, prevista, prevista_estimada: prevista_cadastrada == null, vagas };
@@ -1967,11 +2051,25 @@ export function PosicaoDiaPanel() {
     const saiu = t("ja_saiu");
     const entrada = t("entrada_prev");
     const semCtrl = t("nao_controla");
-    // Força atual = presentes no local + a caminho + já saíram + sem controle + atrasados
-    const atual = presentes + atrasos + entrada + saiu + semCtrl;
-    // Força prevista = soma do cadastro por depto (com fallback de ativos por depto)
+    // Força operacional = presentes no local + a caminho + já saíram + sem controle + atrasados
+    const operacional = presentes + atrasos + entrada + saiu + semCtrl;
+    // Força prevista legado = soma do cadastro por depto (com fallback de ativos por depto)
     const prevista = deptStats.reduce((s, r) => s + (r.prevista || 0), 0);
-    const vagas = Math.max(0, prevista - atual);
+    const vagas = Math.max(0, prevista - operacional);
+
+    // Quadro FPD: usa departamentos da API do dia quando disponível
+    const deptosApi = diaQuery.data?.departamentos ?? dia?.departamentos;
+    const quadroAtual =
+      computeQuadroForcaAtualFromDepartamentos(deptosApi, {
+        deptoFilter,
+        nomeToId: fpdNomeToId,
+      }) ?? operacional;
+    const quadroPrevista =
+      computeQuadroForcaPrevistaFromDepartamentos(deptosApi, {
+        deptoFilter,
+        nomeToId: fpdNomeToId,
+      }) ?? computeQuadroForcaPrevista(deptStats, fpdMap, { deptoFilter });
+    const quadroVagas = Math.max(0, quadroPrevista - quadroAtual);
 
     // últimos 7 dias úteis — presentes (usa dado importado do dia para hoje)
     let trend = [0, 0, 0, 0, 0, 0, 0];
@@ -1996,8 +2094,12 @@ export function PosicaoDiaPanel() {
 
     return {
       prevista: prevista > 0 ? prevista : null,
-      atual,
+      atual: operacional,
+      operacional,
       vagas: prevista > 0 ? vagas : null,
+      quadroAtual,
+      quadroPrevista,
+      quadroVagas,
       presentes,
       faltas,
       atrasos,
@@ -2010,7 +2112,7 @@ export function PosicaoDiaPanel() {
       trend,
       ontem,
     };
-  }, [dia, hist, getDiaTotal, deptStats]);
+  }, [dia, diaQuery.data, hist, getDiaTotal, deptStats, deptoFilter, fpdNomeToId, fpdMap]);
 
   const histData = useMemo(() => {
     if (!Array.isArray(hist)) return [];
@@ -2026,7 +2128,7 @@ export function PosicaoDiaPanel() {
       // Import data: filter _employees by filial/depto and recompute aggregates
       if (wantFilter && Array.isArray(r._employees) && r._employees.length > 0 && !hasDetails) {
         const emps = r._employees.filter((emp) => {
-          if (filialFilter && (emp.filial || "") !== filialFilter) return false;
+          if (filialFilter && !matchesFilial(emp)) return false;
           if (deptoFilter && (emp.depto || "") !== deptoFilter) return false;
           return true;
         });
@@ -2058,7 +2160,7 @@ export function PosicaoDiaPanel() {
           _employees: emps,
           _events: Array.isArray(r._events)
             ? r._events.filter((ev) => {
-                if (filialFilter && (ev.filial || "") !== filialFilter) return false;
+                if (filialFilter && !matchesFilial(ev)) return false;
                 if (deptoFilter && (ev.depto || "") !== deptoFilter) return false;
                 return true;
               })
@@ -2134,7 +2236,7 @@ export function PosicaoDiaPanel() {
     });
 
     return rows.filter((r) => r.date);
-  }, [hist, filialFilter, deptoFilter, matchesFilters]);
+  }, [hist, filialFilter, deptoFilter, matchesFilters, matchesFilial]);
 
   const histDeptData = useMemo(() => {
     if (!Array.isArray(hist)) return [];
@@ -2143,7 +2245,7 @@ export function PosicaoDiaPanel() {
         const date = r?.date || r?.data_referencia || r?.data || "";
         if (Array.isArray(r._employees) && r._employees.length > 0) {
           const emps = r._employees.filter((emp) => {
-            if (filialFilter && (emp.filial || "") !== filialFilter) return false;
+            if (filialFilter && !matchesFilial(emp)) return false;
             return true;
           });
           const hrsPres = emps.reduce((s, e) => s + (e.hrsPres || 0), 0);
@@ -2174,7 +2276,7 @@ export function PosicaoDiaPanel() {
             _employees: emps,
             _events: Array.isArray(r._events)
               ? r._events.filter((ev) => {
-                  if (filialFilter && (ev.filial || "") !== filialFilter) return false;
+                  if (filialFilter && !matchesFilial(ev)) return false;
                   return true;
                 })
               : null,
@@ -2206,7 +2308,7 @@ export function PosicaoDiaPanel() {
         };
       })
       .filter((r) => r.date);
-  }, [hist, filialFilter]);
+  }, [hist, filialFilter, matchesFilial]);
 
   // Presença por departamento (top 7)
   // Fonte: apenas presentes.colaboradores — evita misturar com outras categorias (mock ou API)
@@ -3313,6 +3415,17 @@ export function PosicaoDiaPanel() {
                 totalText={""}
                 forcaPrevistaDeptoMap={forcaPrevistaDeptoMap}
                 onSaveForcaPrevistaDeptoMap={(map) => setForcaPrevistaDeptoMap(map || {})}
+                fpdMap={fpdMap}
+                fpdList={fpdQuery.data ?? []}
+                fpdSaving={
+                  salvarFpdMutation.isPending ||
+                  excluirFpdMutation.isPending ||
+                  limparFpdMutation.isPending
+                }
+                onSaveFpd={handleSaveFpd}
+                onExcluirFpdDepto={handleExcluirFpdDepto}
+                onLimparFpd={handleLimparFpd}
+                departamentosApi={diaQuery.data?.departamentos ?? dia?.departamentos ?? []}
                 onImportXlsx={handleImportXlsx}
                 importBusy={importBusy}
                 importOverrides={importOverrides}
@@ -3330,6 +3443,7 @@ export function PosicaoDiaPanel() {
                   openPosListModal(k);
                 }}
                 filialOptions={filialOptions}
+                filialLabel={selectedFilialLabel}
                 deptoOptions={deptoOptions}
                 filialValue={filialFilter}
                 deptoValue={deptoFilter}

@@ -3,6 +3,7 @@ import { getGridCellText } from "./posicaoGridUtils.js";
 import { posListUsesPeriodoCols } from "./posicaoHdmEmbeddedCols.js";
 import { _normText, colaboradoresFromHistForCat, getColaboradoresFromGroup, isAtrasoHistEvent } from "./posicaoImport.js";
 import { ABONOS_KIND, abonosDetailRowsToEvents, getAbonosDetailRows } from "./abonosDept.js";
+import { matchesDeptoFilter } from "./domain/positionRows.js";
 
 const ABONOS_SHEET_POS_KEYS = new Set(["abonos_pendentes", "abonos_efetuados"]);
 
@@ -186,6 +187,7 @@ export function colaboradoresToSyntheticEvents(colabs, dateIso, posKey) {
   return (Array.isArray(colabs) ? colabs : []).map((c, idx) => ({
     mat: String(c?.matricula ?? c?.mat ?? `${idx}`).trim(),
     nome: String(c?.nome || c?.colaborador || "").trim(),
+    filialId: c?.filialId ?? c?.filial_id ?? c?.filial?.id ?? undefined,
     filial: c?.filial || "",
     depto: c?.depto_desc || c?.depto || c?.departamento || "",
     cargo: c?.cargo_desc || c?.cargo || "",
@@ -248,8 +250,10 @@ export function buildPosListModalData({
   dateTo = "",
   posListKey,
   filialFilter = "",
+  filialFilterLabel = "",
   deptoFilter = "",
   eventCategories = [],
+  fpdNomeToId = {},
 }) {
   const ref = normDateKey(dateIso) || "";
   const from = normDateKey(dateFrom) || ref;
@@ -266,11 +270,17 @@ export function buildPosListModalData({
 
   events = filterEventsForPosListKey(events, posListKey, eventCategories);
 
-  const deptoFilterKey = _normText(deptoFilter);
   const matches = (c) => {
-    if (filialFilter && (c?.filial || "") !== filialFilter) return false;
-    const dep = c?.depto_desc || c?.depto || c?.departamento || "";
-    if (deptoFilter && _normText(dep) !== deptoFilterKey) return false;
+    if (filialFilter) {
+      const rowFilialId = c?.filialId ?? c?.filial_id ?? c?.filial?.id ?? c?._raw?.filialId;
+      const sameId = rowFilialId != null && String(rowFilialId) === String(filialFilter);
+      const sameLegacyLabel =
+        rowFilialId == null &&
+        filialFilterLabel &&
+        _normText(c?.filial || c?.filialNome || "") === _normText(filialFilterLabel);
+      if (!sameId && !sameLegacyLabel) return false;
+    }
+    if (!matchesDeptoFilter(c, deptoFilter, { nomeToId: fpdNomeToId })) return false;
     return true;
   };
 

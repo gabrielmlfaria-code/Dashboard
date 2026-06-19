@@ -223,55 +223,55 @@ function toAbonosStored(resumoPayload, departamentosPayload) {
   };
 }
 
-export function useDashboardApiData({ periodo } = {}) {
+export function useDashboardApiData({ periodo, filialId = "" } = {}) {
   const de = periodo?.de || "";
   const ate = periodo?.ate || "";
 
   const bancoHorasResumo = useQuery({
-    queryKey: ["dashboard-api", "bancoHoras", "resumo", de, ate],
-    queryFn: () => BancoHorasApi.getResumo({ de, ate }),
+    queryKey: ["dashboard-api", "bancoHoras", "resumo", de, ate, filialId],
+    queryFn: () => BancoHorasApi.getResumo({ de, ate, filialId }),
     enabled: enabledFor("bancoHoras", de, ate),
     retry: 1,
     staleTime: STALE_TIME,
   });
   const bancoHorasDepartamentos = useQuery({
-    queryKey: ["dashboard-api", "bancoHoras", "departamentos", de, ate],
-    queryFn: () => BancoHorasApi.getDepartamentos({ de, ate, top: 20 }),
+    queryKey: ["dashboard-api", "bancoHoras", "departamentos", de, ate, filialId],
+    queryFn: () => BancoHorasApi.getDepartamentos({ de, ate, filialId, top: 20 }),
     enabled: enabledFor("bancoHoras", de, ate),
     retry: 1,
     staleTime: STALE_TIME,
   });
   const fechamentoMensal = useQuery({
-    queryKey: ["dashboard-api", "mensal", de, ate],
-    queryFn: () => FechamentoMensalApi.getEventos({ de, ate }),
+    queryKey: ["dashboard-api", "mensal", de, ate, filialId],
+    queryFn: () => FechamentoMensalApi.getEventos({ de, ate, filialId }),
     enabled: enabledFor("mensal", de, ate),
     retry: 1,
     staleTime: STALE_TIME,
   });
   const turnover = useQuery({
-    queryKey: ["dashboard-api", "turnover", de, ate],
-    queryFn: () => TurnoverApi.getResumo({ de, ate }),
+    queryKey: ["dashboard-api", "turnover", de, ate, filialId],
+    queryFn: () => TurnoverApi.getResumo({ de, ate, filialId }),
     enabled: enabledFor("turnover", de, ate),
     retry: 1,
     staleTime: STALE_TIME,
   });
   const radar = useQuery({
-    queryKey: ["dashboard-api", "radar", de, ate],
-    queryFn: () => RadarTrabalhistaApi.getResumo({ de, ate }),
+    queryKey: ["dashboard-api", "radar", de, ate, filialId],
+    queryFn: () => RadarTrabalhistaApi.getResumo({ de, ate, filialId }),
     enabled: enabledFor("radar", de, ate),
     retry: 1,
     staleTime: STALE_TIME,
   });
   const abonosResumo = useQuery({
-    queryKey: ["dashboard-api", "abonos", "resumo", de, ate],
-    queryFn: () => AbonosApi.getResumo({ de, ate }),
+    queryKey: ["dashboard-api", "abonos", "resumo", de, ate, filialId],
+    queryFn: () => AbonosApi.getResumo({ de, ate, filialId }),
     enabled: enabledFor("abonos", de, ate),
     retry: 1,
     staleTime: STALE_TIME,
   });
   const abonosDepartamentos = useQuery({
-    queryKey: ["dashboard-api", "abonos", "departamentos", de, ate],
-    queryFn: () => AbonosApi.getDepartamentos({ de, ate, top: 20 }),
+    queryKey: ["dashboard-api", "abonos", "departamentos", de, ate, filialId],
+    queryFn: () => AbonosApi.getDepartamentos({ de, ate, filialId, top: 20 }),
     enabled: enabledFor("abonos", de, ate),
     retry: 1,
     staleTime: STALE_TIME,
