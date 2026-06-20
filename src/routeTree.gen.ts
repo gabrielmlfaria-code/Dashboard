@@ -9,14 +9,27 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SaudePreventivaDESKTOPGURKLA8RouteImport } from './routes/saude-preventiva-DESKTOP-GURKLA8'
 import { Route as SaudePreventivaRouteImport } from './routes/saude-preventiva'
+import { Route as Nr1DESKTOPGURKLA8RouteImport } from './routes/nr-1-DESKTOP-GURKLA8'
 import { Route as Nr1RouteImport } from './routes/nr-1'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 
+const SaudePreventivaDESKTOPGURKLA8Route =
+  SaudePreventivaDESKTOPGURKLA8RouteImport.update({
+    id: '/saude-preventiva-DESKTOP-GURKLA8',
+    path: '/saude-preventiva-DESKTOP-GURKLA8',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const SaudePreventivaRoute = SaudePreventivaRouteImport.update({
   id: '/saude-preventiva',
   path: '/saude-preventiva',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const Nr1DESKTOPGURKLA8Route = Nr1DESKTOPGURKLA8RouteImport.update({
+  id: '/nr-1-DESKTOP-GURKLA8',
+  path: '/nr-1-DESKTOP-GURKLA8',
   getParentRoute: () => rootRouteImport,
 } as any)
 const Nr1Route = Nr1RouteImport.update({
@@ -39,43 +52,84 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/nr-1': typeof Nr1Route
+  '/nr-1-DESKTOP-GURKLA8': typeof Nr1DESKTOPGURKLA8Route
   '/saude-preventiva': typeof SaudePreventivaRoute
+  '/saude-preventiva-DESKTOP-GURKLA8': typeof SaudePreventivaDESKTOPGURKLA8Route
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/nr-1': typeof Nr1Route
+  '/nr-1-DESKTOP-GURKLA8': typeof Nr1DESKTOPGURKLA8Route
   '/saude-preventiva': typeof SaudePreventivaRoute
+  '/saude-preventiva-DESKTOP-GURKLA8': typeof SaudePreventivaDESKTOPGURKLA8Route
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/nr-1': typeof Nr1Route
+  '/nr-1-DESKTOP-GURKLA8': typeof Nr1DESKTOPGURKLA8Route
   '/saude-preventiva': typeof SaudePreventivaRoute
+  '/saude-preventiva-DESKTOP-GURKLA8': typeof SaudePreventivaDESKTOPGURKLA8Route
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/nr-1' | '/saude-preventiva'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/nr-1'
+    | '/nr-1-DESKTOP-GURKLA8'
+    | '/saude-preventiva'
+    | '/saude-preventiva-DESKTOP-GURKLA8'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/nr-1' | '/saude-preventiva'
-  id: '__root__' | '/' | '/login' | '/nr-1' | '/saude-preventiva'
+  to:
+    | '/'
+    | '/login'
+    | '/nr-1'
+    | '/nr-1-DESKTOP-GURKLA8'
+    | '/saude-preventiva'
+    | '/saude-preventiva-DESKTOP-GURKLA8'
+  id:
+    | '__root__'
+    | '/'
+    | '/login'
+    | '/nr-1'
+    | '/nr-1-DESKTOP-GURKLA8'
+    | '/saude-preventiva'
+    | '/saude-preventiva-DESKTOP-GURKLA8'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
   Nr1Route: typeof Nr1Route
+  Nr1DESKTOPGURKLA8Route: typeof Nr1DESKTOPGURKLA8Route
   SaudePreventivaRoute: typeof SaudePreventivaRoute
+  SaudePreventivaDESKTOPGURKLA8Route: typeof SaudePreventivaDESKTOPGURKLA8Route
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/saude-preventiva-DESKTOP-GURKLA8': {
+      id: '/saude-preventiva-DESKTOP-GURKLA8'
+      path: '/saude-preventiva-DESKTOP-GURKLA8'
+      fullPath: '/saude-preventiva-DESKTOP-GURKLA8'
+      preLoaderRoute: typeof SaudePreventivaDESKTOPGURKLA8RouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/saude-preventiva': {
       id: '/saude-preventiva'
       path: '/saude-preventiva'
       fullPath: '/saude-preventiva'
       preLoaderRoute: typeof SaudePreventivaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/nr-1-DESKTOP-GURKLA8': {
+      id: '/nr-1-DESKTOP-GURKLA8'
+      path: '/nr-1-DESKTOP-GURKLA8'
+      fullPath: '/nr-1-DESKTOP-GURKLA8'
+      preLoaderRoute: typeof Nr1DESKTOPGURKLA8RouteImport
       parentRoute: typeof rootRouteImport
     }
     '/nr-1': {
@@ -106,7 +160,9 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
   Nr1Route: Nr1Route,
+  Nr1DESKTOPGURKLA8Route: Nr1DESKTOPGURKLA8Route,
   SaudePreventivaRoute: SaudePreventivaRoute,
+  SaudePreventivaDESKTOPGURKLA8Route: SaudePreventivaDESKTOPGURKLA8Route,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
