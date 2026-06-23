@@ -687,6 +687,15 @@ const addDaysIso = (iso, days) => {
   return normDateKey(date);
 };
 
+const addMonthsIso = (iso, months) => {
+  const d = normDateKey(iso);
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  const date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  date.setMonth(date.getMonth() + Number(months || 0));
+  return normDateKey(date);
+};
+
 const buildEmptyHistDay = (date) => ({
   date,
   data_referencia: date,
@@ -714,6 +723,18 @@ const fillCalendarDays = (rows, days) => {
   return out;
 };
 
+const fillCalendarRange = (rows, from, to) => {
+  const de = normDateKey(from);
+  const ate = normDateKey(to);
+  if (!de || !ate || de > ate) return rows;
+  const byDate = new Map(rows.map((r) => [normDateKey(r.date), r]));
+  const out = [];
+  for (let d = de; d && d <= ate; d = addDaysIso(d, 1)) {
+    out.push(byDate.get(d) || buildEmptyHistDay(d));
+  }
+  return out;
+};
+
 const filterHistRowsByPeriod = (allRows, { faltDays, histDateFrom, histDateTo, periodoApuracao }) => {
   if (!allRows.length) return [];
   const cutoff = getHistDataCutoffIso();
@@ -726,13 +747,15 @@ const filterHistRowsByPeriod = (allRows, { faltDays, histDateFrom, histDateTo, p
   if (!rows.length) return [];
 
   if (histDateFrom || histDateTo) {
-    const effectiveTo = histDateTo && histDateTo <= cutoff ? histDateTo : cutoff;
-    return rows.filter((r) => {
+    const effectiveFrom = normDateKey(histDateFrom) || normDateKey(rows[0]?.date);
+    const effectiveTo = histDateTo && histDateTo <= cutoff ? normDateKey(histDateTo) : cutoff;
+    const periodRows = rows.filter((r) => {
       const d = normDateKey(r.date);
-      if (histDateFrom && d < normDateKey(histDateFrom)) return false;
+      if (effectiveFrom && d < effectiveFrom) return false;
       if (d > normDateKey(effectiveTo)) return false;
       return true;
     });
+    return fillCalendarRange(periodRows, effectiveFrom, effectiveTo);
   }
 
   if (faltDays === PB_FALT_DAYS_ATUAL) {
@@ -745,10 +768,11 @@ const filterHistRowsByPeriod = (allRows, { faltDays, histDateFrom, histDateTo, p
     }
     if (de && ate) {
       const ateCapped = ate <= cutoff ? ate : cutoff;
-      return rows.filter((r) => {
+      const periodRows = rows.filter((r) => {
         const d = normDateKey(r.date);
         return d && d >= de && d <= ateCapped;
       });
+      return fillCalendarRange(periodRows, de, ateCapped);
     }
     return rows;
   }
@@ -4044,6 +4068,8 @@ export function PosicaoBentoHeader({
   const [consecFaltasOpen, setConsecFaltasOpen] = useState(false);
   const [histDateFrom, setHistDateFrom] = useState("");
   const [histDateTo, setHistDateTo] = useState("");
+  const [histDateDraftFrom, setHistDateDraftFrom] = useState("");
+  const [histDateDraftTo, setHistDateDraftTo] = useState("");
   const [histCtrlEl, setHistCtrlEl] = useState(null);
   const [selectedEmp, setSelectedEmp] = useState(null);
   const [nlAppliedFilter, setNlAppliedFilter] = useState(null);
@@ -4089,13 +4115,19 @@ export function PosicaoBentoHeader({
     setAuditoriaWorkspaceOpen(false);
     setBentoView(opts.view ?? "table");
     setHistIsFloating(true);
-    if (opts.dateFrom !== undefined) setHistDateFrom(normDateKey(opts.dateFrom) || "");
-    if (opts.dateTo !== undefined) setHistDateTo(normDateKey(opts.dateTo) || "");
+    if (opts.useCurrentPeriod) {
+      setFaltDays(PB_FALT_DAYS_ATUAL);
+      setHistDateFrom(normDateKey(periodoApuracao?.de) || "");
+      setHistDateTo(normDateKey(periodoApuracao?.ate) || "");
+    } else {
+      if (opts.dateFrom !== undefined) setHistDateFrom(normDateKey(opts.dateFrom) || "");
+      if (opts.dateTo !== undefined) setHistDateTo(normDateKey(opts.dateTo) || "");
+    }
     if (opts.colId != null) setHistHighlightCol(opts.colId);
     else if (opts.clearHighlight) setHistHighlightCol(null);
     if (opts.tableViewRequest) setHistTableViewRequest(opts.tableViewRequest);
     if (opts.openDateRequest) setHistOpenDateRequest(opts.openDateRequest);
-  }, []);
+  }, [periodoApuracao?.ate, periodoApuracao?.de]);
 
   const openHistTableInline = useCallback((opts = {}) => {
     setRadarWorkspaceOpen(false);
@@ -4103,13 +4135,19 @@ export function PosicaoBentoHeader({
     setBentoView(opts.view ?? "table");
     setHistDetailOpen(true);
     setHistIsFloating(false);
-    if (opts.dateFrom !== undefined) setHistDateFrom(normDateKey(opts.dateFrom) || "");
-    if (opts.dateTo !== undefined) setHistDateTo(normDateKey(opts.dateTo) || "");
+    if (opts.useCurrentPeriod) {
+      setFaltDays(PB_FALT_DAYS_ATUAL);
+      setHistDateFrom(normDateKey(periodoApuracao?.de) || "");
+      setHistDateTo(normDateKey(periodoApuracao?.ate) || "");
+    } else {
+      if (opts.dateFrom !== undefined) setHistDateFrom(normDateKey(opts.dateFrom) || "");
+      if (opts.dateTo !== undefined) setHistDateTo(normDateKey(opts.dateTo) || "");
+    }
     if (opts.colId != null) setHistHighlightCol(opts.colId);
     else if (opts.clearHighlight) setHistHighlightCol(null);
     if (opts.tableViewRequest) setHistTableViewRequest(opts.tableViewRequest);
     if (opts.openDateRequest) setHistOpenDateRequest(opts.openDateRequest);
-  }, []);
+  }, [periodoApuracao?.ate, periodoApuracao?.de]);
 
   const closeHistTableModal = useCallback(() => {
     setAuditoriaWorkspaceOpen(false);
@@ -4136,9 +4174,12 @@ export function PosicaoBentoHeader({
         extr_qtd: "extras",
       };
       setHistMetricFilter(metricByCol[colId] || null);
-      openHistTableInline({ colId });
+      openHistTableInline({
+        colId,
+        useCurrentPeriod: faltDays === PB_FALT_DAYS_ATUAL && periodoApuracao?.de && periodoApuracao?.ate,
+      });
     },
-    [openHistTableInline],
+    [faltDays, openHistTableInline, periodoApuracao?.ate, periodoApuracao?.de],
   );
 
   const openHistTableRisk = useCallback(() => {
@@ -4285,6 +4326,8 @@ export function PosicaoBentoHeader({
         startTransition(() => {
           setHistDateFrom("");
           setHistDateTo("");
+          setHistDateDraftFrom("");
+          setHistDateDraftTo("");
           setFaltDays(d);
           setHistPeriodLoading(false);
         });
@@ -4312,6 +4355,8 @@ export function PosicaoBentoHeader({
     setSelectedEmp(null);
     setHistDateFrom("");
     setHistDateTo("");
+    setHistDateDraftFrom("");
+    setHistDateDraftTo("");
     setNlAppliedFilter(null);
     setHistTableViewRequest((prev) => ({
       view: prev?.view || "date",
@@ -4416,12 +4461,36 @@ export function PosicaoBentoHeader({
       to: dates[dates.length - 1] || "",
     };
   }, [histRows]);
+  const selectedHistDateRange = useMemo(() => {
+    const customFrom = normDateKey(histDateFrom);
+    const customTo = normDateKey(histDateTo);
+    if (customFrom || customTo) {
+      return {
+        from: customFrom || activeHistDateRange.from,
+        to: customTo || activeHistDateRange.to,
+      };
+    }
+    if (faltDays === PB_FALT_DAYS_ATUAL && periodoApuracao?.de && periodoApuracao?.ate) {
+      return {
+        from: normDateKey(periodoApuracao.de),
+        to: normDateKey(periodoApuracao.ate),
+      };
+    }
+    return activeHistDateRange;
+  }, [
+    activeHistDateRange,
+    faltDays,
+    histDateFrom,
+    histDateTo,
+    periodoApuracao?.ate,
+    periodoApuracao?.de,
+  ]);
   const activeDashboardPeriod = useMemo(
     () => ({
-      de: normDateKey(histDateFrom) || activeHistDateRange.from || normDateKey(periodoApuracao?.de),
-      ate: normDateKey(histDateTo) || activeHistDateRange.to || normDateKey(periodoApuracao?.ate),
+      de: selectedHistDateRange.from || normDateKey(periodoApuracao?.de),
+      ate: selectedHistDateRange.to || normDateKey(periodoApuracao?.ate),
     }),
-    [histDateFrom, histDateTo, activeHistDateRange.from, activeHistDateRange.to, periodoApuracao],
+    [periodoApuracao, selectedHistDateRange.from, selectedHistDateRange.to],
   );
   const dashboardApiData = useDashboardApiData({
     periodo: activeDashboardPeriod,
@@ -4431,11 +4500,11 @@ export function PosicaoBentoHeader({
     (opts = {}) => {
       openHistTableModal({
         ...opts,
-        dateFrom: opts.dateFrom ?? activeHistDateRange.from,
-        dateTo: opts.dateTo ?? activeHistDateRange.to,
+        dateFrom: opts.dateFrom ?? selectedHistDateRange.from,
+        dateTo: opts.dateTo ?? selectedHistDateRange.to,
       });
     },
-    [activeHistDateRange.from, activeHistDateRange.to, openHistTableModal],
+    [openHistTableModal, selectedHistDateRange.from, selectedHistDateRange.to],
   );
   const openHistTableModalForActivePeriodWithLoading = useCallback(
     (opts = {}) => {
@@ -4454,6 +4523,50 @@ export function PosicaoBentoHeader({
     },
     [openHistTableModalForActivePeriod],
   );
+  const customPeriodFrom = normDateKey(histDateDraftFrom);
+  const customPeriodTo = normDateKey(histDateDraftTo);
+  const customPeriodMaxTo = customPeriodFrom ? addMonthsIso(customPeriodFrom, 12) : "";
+  const customPeriodMinFrom = customPeriodTo ? addMonthsIso(customPeriodTo, -12) : "";
+  const customPeriodInvalidOrder = Boolean(
+    customPeriodFrom && customPeriodTo && customPeriodFrom > customPeriodTo,
+  );
+  const customPeriodTooLong = Boolean(
+    customPeriodFrom && customPeriodTo && !customPeriodInvalidOrder && customPeriodTo > customPeriodMaxTo,
+  );
+  const customPeriodInvalid = customPeriodInvalidOrder || customPeriodTooLong;
+  const customPeriodTitle =
+    customPeriodInvalidOrder ? "Data de não pode ser maior que Data até"
+    : customPeriodTooLong ? "Selecione no máximo 12 meses"
+    : "Carregar período";
+  const canApplyCustomHistPeriod = Boolean((histDateDraftFrom || histDateDraftTo) && !customPeriodInvalid);
+  const applyCustomHistPeriod = useCallback(() => {
+    const from = normDateKey(histDateDraftFrom);
+    const to = normDateKey(histDateDraftTo);
+    if (!from && !to) return;
+    if (from && to && from > to) return;
+    if (from && to && to > addMonthsIso(from, 12)) return;
+    if (histPeriodLoadingFrameRef.current) {
+      window.cancelAnimationFrame(histPeriodLoadingFrameRef.current);
+      histPeriodLoadingFrameRef.current = null;
+    }
+    setHistPeriodLoading(true);
+    histPeriodLoadingFrameRef.current = window.requestAnimationFrame(() => {
+      histPeriodLoadingFrameRef.current = null;
+      startTransition(() => {
+        setHistDateFrom(from);
+        setHistDateTo(to);
+        setHistHighlightCol(null);
+        setHistMetricFilter(null);
+        setHistTableViewRequest((prev) => ({
+          view: prev?.view || "date",
+          ts: Date.now(),
+          search: prev?.search || "",
+          filterField: prev?.filterField || "",
+        }));
+        setHistPeriodLoading(false);
+      });
+    });
+  }, [histDateDraftFrom, histDateDraftTo]);
 
   const openHistTableMetricModal = useCallback(
     (metricFilter, colId) => {
@@ -6626,14 +6739,39 @@ export function PosicaoBentoHeader({
             >
               30d
             </button>
-            <button
-              type="button"
-              className={`pb-trend-tab pb-periodos-tab${histDateFrom || histDateTo ? " is-active" : ""}`}
-              onClick={() => openHistTableModalForActivePeriod()}
-              title="Selecionar período personalizado"
-            >
-              Outros períodos
-            </button>
+            <div className={`pb-period-inline${histDateFrom || histDateTo ? " is-active" : ""}`}>
+              <label>
+                <span>Data de</span>
+                <input
+                  type="date"
+                  value={histDateDraftFrom}
+                  onChange={(event) => setHistDateDraftFrom(event.target.value)}
+                  aria-label="Data de"
+                  max={customPeriodTo || undefined}
+                  min={customPeriodMinFrom || undefined}
+                />
+              </label>
+              <label>
+                <span>Data até</span>
+                <input
+                  type="date"
+                  value={histDateDraftTo}
+                  onChange={(event) => setHistDateDraftTo(event.target.value)}
+                  aria-label="Data até"
+                  min={customPeriodFrom || undefined}
+                  max={customPeriodMaxTo || undefined}
+                />
+              </label>
+              <button
+                type="button"
+                className="pb-period-ok"
+                onClick={applyCustomHistPeriod}
+                disabled={!canApplyCustomHistPeriod}
+                title={customPeriodTitle}
+              >
+                OK
+              </button>
+            </div>
           </div>
         </div>
 
@@ -7311,7 +7449,14 @@ export function PosicaoBentoHeader({
                     <button
                       type="button"
                       className="pb-radar-card pb-radar-card--hero pb-radar-card--abs"
-                      onClick={() => openHistTableInline()}
+                      onClick={() =>
+                        openHistTableInline({
+                          useCurrentPeriod:
+                            faltDays === PB_FALT_DAYS_ATUAL &&
+                            periodoApuracao?.de &&
+                            periodoApuracao?.ate,
+                        })
+                      }
                     >
                       <span className="pb-radar-label">Absenteísmo</span>
                       <strong className="pb-radar-value-hero" title={absCardTooltip}>
@@ -7534,8 +7679,8 @@ export function PosicaoBentoHeader({
                 histRows={histRows}
                 theme={theme}
                 deptHistRows={histDeptRows}
-                dateFrom={histDateFrom}
-                dateTo={histDateTo}
+                dateFrom={selectedHistDateRange.from}
+                dateTo={selectedHistDateRange.to}
                 onDateFromChange={setHistDateFrom}
                 onDateToChange={setHistDateTo}
                 ctrlEl={histCtrlEl}
@@ -7570,8 +7715,8 @@ export function PosicaoBentoHeader({
                 histRows={histRows}
                 theme={theme}
                 deptHistRows={histDeptRows}
-                dateFrom={histDateFrom}
-                dateTo={histDateTo}
+                dateFrom={selectedHistDateRange.from}
+                dateTo={selectedHistDateRange.to}
                 onDateFromChange={setHistDateFrom}
                 onDateToChange={setHistDateTo}
                 ctrlEl={histCtrlEl}

@@ -117,6 +117,25 @@
   line-height: 1.25;
   flex: 1;
 }
+.mp-ob-edit-toggle {
+  appearance: none;
+  border: 1px solid var(--ob-border);
+  background: var(--ob-bg-2);
+  color: var(--ob-text-2);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.mp-ob-edit-toggle:hover,
+.mp-ob-edit-toggle.is-active {
+  border-color: var(--ob-accent-border);
+  background: var(--ob-accent-soft);
+  color: var(--ob-accent);
+}
 .mp-ob-close {
   appearance: none;
   border: none;
@@ -157,6 +176,55 @@
 }
 .mp-ob-why b {
   font-weight: 700;
+}
+.mp-ob-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+}
+.mp-ob-editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ob-muted);
+}
+.mp-ob-editor input,
+.mp-ob-editor textarea {
+  width: 100%;
+  border: 1px solid var(--ob-border);
+  border-radius: 10px;
+  background: var(--ob-bg-2);
+  color: var(--ob-text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+  padding: 9px 10px;
+  resize: vertical;
+}
+.mp-ob-editor input:focus,
+.mp-ob-editor textarea:focus {
+  outline: none;
+  border-color: var(--ob-accent);
+  box-shadow: 0 0 0 3px var(--ob-accent-soft);
+}
+.mp-ob-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+.mp-ob-editor-actions span {
+  flex: 1;
+  color: var(--ob-muted);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 /* ── Rodapé do tooltip ────────────────────────────────────── */

@@ -516,39 +516,31 @@ export function HistoricoTable({
   const updateDateFrom = useCallback(
     (value) => {
       const v = value || "";
-      const normalized = normDateKey(v);
       setDateDraftFrom(v);
-      onDateFromChange?.(normalized);
       if (
         dateDraftTo &&
         v &&
         (new Date(dateDraftTo) - new Date(v)) / 86400000 > MAX_DAYS
       ) {
-        const nextTo = addDays(v, MAX_DAYS);
-        setDateDraftTo(nextTo);
-        onDateToChange?.(nextTo);
+        setDateDraftTo(addDays(v, MAX_DAYS));
       }
     },
-    [dateDraftTo, onDateFromChange, onDateToChange],
+    [dateDraftTo],
   );
 
   const updateDateTo = useCallback(
     (value) => {
       const v = value || "";
-      const normalized = normDateKey(v);
       setDateDraftTo(v);
-      onDateToChange?.(normalized);
       if (
         dateDraftFrom &&
         v &&
         (new Date(v) - new Date(dateDraftFrom)) / 86400000 > MAX_DAYS
       ) {
-        const nextFrom = addDays(v, -MAX_DAYS);
-        setDateDraftFrom(nextFrom);
-        onDateFromChange?.(nextFrom);
+        setDateDraftFrom(addDays(v, -MAX_DAYS));
       }
     },
-    [dateDraftFrom, onDateFromChange, onDateToChange],
+    [dateDraftFrom],
   );
 
   /* ── drilldown + day modal ── */
