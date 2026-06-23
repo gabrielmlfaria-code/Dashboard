@@ -11,27 +11,59 @@ export const PB_CFG_TABS = [
 
 export function PbConfiguracoesModal({
   theme = "light",
-  initialTab = "importacoes",
+  initialTab = "metas",
   onClose,
   allowedTabs = {},
   metasTabProps,
   importTabProps,
   horasTabProps,
 }) {
+  const [showImportacoes, setShowImportacoes] = useState(false);
+
   const visibleTabs = useMemo(
-    () => PB_CFG_TABS.filter((item) => allowedTabs[item.id] !== false),
-    [allowedTabs],
+    () =>
+      PB_CFG_TABS.filter(
+        (item) =>
+          allowedTabs[item.id] !== false &&
+          (item.id !== "importacoes" || showImportacoes),
+      ),
+    [allowedTabs, showImportacoes],
   );
-  const firstTab = visibleTabs[0]?.id || initialTab;
-  const [tab, setTab] = useState(visibleTabs.some((item) => item.id === initialTab) ? initialTab : firstTab);
+
+  const firstTab = visibleTabs[0]?.id || "metas";
+  const resolvedInitial = initialTab === "importacoes" ? "metas" : initialTab;
+
+  const [tab, setTab] = useState(
+    visibleTabs.some((item) => item.id === resolvedInitial)
+      ? resolvedInitial
+      : firstTab,
+  );
 
   useEffect(() => {
-    setTab(visibleTabs.some((item) => item.id === initialTab) ? initialTab : firstTab);
+    const next = initialTab === "importacoes" ? "metas" : initialTab;
+    setTab(visibleTabs.some((item) => item.id === next) ? next : firstTab);
   }, [firstTab, initialTab, visibleTabs]);
+
+  // Switch away from importacoes if it becomes hidden
+  useEffect(() => {
+    if (!showImportacoes && tab === "importacoes") {
+      setTab("metas");
+    }
+  }, [showImportacoes]);
 
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === "Escape") onClose?.();
+      if (e.key === "Escape") {
+        onClose?.();
+        return;
+      }
+      if (e.ctrlKey && (e.key === "i" || e.key === "I")) {
+        e.preventDefault();
+        setShowImportacoes((prev) => {
+          if (!prev) setTab("importacoes");
+          return !prev;
+        });
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);

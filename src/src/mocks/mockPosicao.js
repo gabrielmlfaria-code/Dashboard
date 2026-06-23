@@ -1,8 +1,9 @@
-// src/mocks/mockPosicao.js
-// Em desenvolvimento (USE_MOCK): rotas /posicao/* leem apenas dados importados (planilha).
-// Com backend: CONFIG.USE_MOCK = false → HttpClient chama a API real.
-
 import { ApiService } from "../api/apiService.js";
+import {
+  readEventCategoriesCache,
+  mapApiConfigToUi,
+} from "../api/eventoCategoriaHoraAdapters.js";
+import { DEFAULT_EVENTS, DEFAULT_HOUR_CATEGORIES } from "../panels/posicao/HorasConfigModal.jsx";
 import { normDateKey } from "../panels/posicao/calendarUtils.js";
 import {
   resolveDiaPayload,
@@ -20,6 +21,30 @@ function withTimeout(promise, ms, label) {
       setTimeout(() => reject(new Error(`${label} (${ms}ms)`)), ms);
     }),
   ]);
+}
+
+function mockCategoriasHorasFromDefaults() {
+  const cached = readEventCategoriesCache();
+  if (cached.eventos.length) {
+    return mapApiConfigToUi({
+      colunas: cached.colunas.length ? cached.colunas : DEFAULT_HOUR_CATEGORIES,
+      eventos: cached.eventos,
+    });
+  }
+  const eventos = DEFAULT_EVENTS.map((ev, index) => ({
+    idRegistro: index + 1,
+    id: `evt_${index + 1}`,
+    idEvento: index + 1,
+    codigo: ev.id,
+    name: ev.name,
+    category: ev.category,
+    creditoBH: Boolean(ev.creditoBH),
+    debitoBH: Boolean(ev.debitoBH),
+  }));
+  return mapApiConfigToUi({
+    colunas: DEFAULT_HOUR_CATEGORIES,
+    eventos,
+  });
 }
 
 /** GET /posicao/dia — payload do dia só da planilha persistida. */
@@ -83,6 +108,37 @@ export function ensureMockPosicao() {
   ApiService.registerMock("/posicao/filiais", () => mockFiliaisFromPlanilha());
   ApiService.registerMock("/posicao/dia", (p) => mockDiaFromPlanilha(p?.date));
   ApiService.registerMock("/posicao/historico", (p) => mockHistoricoFromPlanilha(p));
+  ApiService.registerMock("/posicao/categorias-horas", () =>
+    Promise.resolve(mockCategoriasHorasFromDefaults()),
+  );
+  ApiService.registerMock("/posicao/categorias-horas/salvar:POST", async (body) => {
+    const current = mockCategoriasHorasFromDefaults();
+    const byId = new Map(current.eventos.map((ev) => [ev.idEvento, { ...ev }]));
+    for (const item of body?.eventos || []) {
+      const idEvento = Number(item?.idEvento);
+      if (!Number.isFinite(idEvento) || idEvento <= 0) continue;
+      const prev = byId.get(idEvento) || {
+        idRegistro: idEvento,
+        id: `evt_${idEvento}`,
+        idEvento,
+        name: item.name,
+      };
+      byId.set(idEvento, {
+        ...prev,
+        name: item.name || prev.name,
+        category: item.category || prev.category,
+        creditoBH: Boolean(item.creditoBH),
+        debitoBH: Boolean(item.debitoBH),
+      });
+    }
+    const next = mapApiConfigToUi({
+      colunas: current.colunas,
+      eventos: [...byId.values()],
+    });
+    const { persistEventCategoriesCache } = await import("../api/eventoCategoriaHoraAdapters.js");
+    persistEventCategoriesCache(next);
+    return null;
+  });
 }
 
 ensureMockPosicao();

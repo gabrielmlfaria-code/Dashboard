@@ -219,7 +219,6 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <div id="toastRoot" className="toast-root" />
-      {authed && !onLogin ? <LogoutButton userInfo={userInfo} /> : null}
       {blocked ? (
         <div
           data-app-loading="1"

@@ -11,25 +11,52 @@ export const PB_CFG_TABS = [
 
 export function PbConfiguracoesModal({
   theme = "light",
-  initialTab = "importacoes",
+  initialTab = "metas",
   onClose,
   metasTabProps,
   importTabProps,
   horasTabProps,
 }) {
-  const [tab, setTab] = useState(initialTab);
+  const [showImportacoes, setShowImportacoes] = useState(false);
+  const [tab, setTab] = useState(
+    initialTab === "importacoes" ? "metas" : initialTab,
+  );
 
   useEffect(() => {
-    setTab(initialTab);
+    setTab((prev) => {
+      const next = initialTab === "importacoes" ? "metas" : initialTab;
+      return next !== prev ? next : prev;
+    });
   }, [initialTab]);
+
+  // Hide importações tab when it becomes invisible
+  useEffect(() => {
+    if (!showImportacoes && tab === "importacoes") {
+      setTab("metas");
+    }
+  }, [showImportacoes]);
 
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === "Escape") onClose?.();
+      if (e.key === "Escape") {
+        onClose?.();
+        return;
+      }
+      if (e.ctrlKey && (e.key === "i" || e.key === "I")) {
+        e.preventDefault();
+        setShowImportacoes((prev) => {
+          if (!prev) setTab("importacoes");
+          return !prev;
+        });
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  const visibleTabs = PB_CFG_TABS.filter(
+    (t) => t.id !== "importacoes" || showImportacoes,
+  );
 
   const isWide = tab === "horas";
 
@@ -55,7 +82,7 @@ export function PbConfiguracoesModal({
         </div>
 
         <div className="pb-cfg-tabs" role="tablist" aria-label="Seções de configuração">
-          {PB_CFG_TABS.map((t) => (
+          {visibleTabs.map((t) => (
             <button
               key={t.id}
               type="button"

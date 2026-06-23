@@ -68,3 +68,23 @@ export function useLimparForcaPrevista() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["posicao", "forca-prevista"] }),
   });
 }
+
+export function useCategoriasHorasConfig({ idFilial } = {}, options = {}) {
+  const filialId = Number(idFilial);
+  const queryFilial = Number.isFinite(filialId) && filialId > 0 ? filialId : 0;
+  return useQuery({
+    queryKey: ["posicao", "categorias-horas", queryFilial],
+    queryFn: () =>
+      PosicaoApi.getCategoriasHorasConfig(queryFilial > 0 ? { idFilial: queryFilial } : {}),
+    staleTime: 2 * 60_000,
+    ...options,
+  });
+}
+
+export function useSalvarCategoriasHoras() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload) => PosicaoApi.salvarCategoriasHoras(payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["posicao", "categorias-horas"] }),
+  });
+}

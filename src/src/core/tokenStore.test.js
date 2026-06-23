@@ -47,6 +47,24 @@ describe("TokenStore", () => {
     });
   });
 
+  it("captura a filial do usuário quando presente no perfil", () => {
+    TokenStore.setUserInfo({
+      id: "1",
+      username: "ana",
+      name: "Ana Silva",
+      cliente: "Macchips",
+      filial: "Matriz - SP",
+    });
+
+    assert.deepEqual(TokenStore.getUserInfo(), {
+      id: "1",
+      username: "ana",
+      name: "Ana Silva",
+      cliente: "Macchips",
+      filial: "Matriz - SP",
+    });
+  });
+
   it("limpa tokens e perfil juntos", () => {
     TokenStore.setTokens({
       accessToken: "token",

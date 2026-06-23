@@ -59,6 +59,26 @@
   box-sizing: border-box;
 }
 
+/* No top padding when bento fills the viewport panel */
+#cpPosicao .pos-bento {
+  padding-top: 0;
+}
+
+/* Topbar colada no topo do navegador (sem espaço acima) */
+#cpPosicao .panels-row.top .panel-cat:has([data-pb-layout="v2"]) {
+  border-top: none;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+#cpPosicao .pos-bento[data-pb-layout="v2"] {
+  padding-top: 0;
+}
+#cpPosicao .pos-bento[data-pb-layout="v2"] .pb-topbar {
+  top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
 /* Light theme override (scoped, only when data-theme="light" on .pos-bento) */
 .pos-bento[data-theme="light"] {
   --pb-surface: oklch(0.98 0.005 264);
@@ -121,6 +141,109 @@
   flex: 1;
   border: none;
   background: none;
+}
+
+/* Filtro de filial cresce para ocupar o espaço livre da topbar */
+.pos-bento .pb-topbar-filial {
+  flex: 1 1 auto;
+  min-width: 220px;
+  max-width: 560px;
+  font-size: 12px;
+  padding: 7px 12px;
+}
+
+/* ── Identidade do usuário (Empresa · Filial · Usuário + Sair) ── */
+.pos-bento .pb-ident {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px 4px 8px;
+  border: 1px solid var(--pb-border);
+  border-radius: 999px;
+  background: var(--pb-surface-2);
+  flex: 0 0 auto;
+}
+.pos-bento .pb-ident-avatar {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: linear-gradient(135deg, var(--pb-prevista, #5b5bf0), #7c5cf0);
+}
+.pos-bento .pb-ident-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+.pos-bento .pb-ident-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pos-bento .pb-ident-empresa {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pb-text, inherit);
+}
+.pos-bento .pb-ident-meta {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pb-muted, #64748b);
+}
+.pos-bento .pb-ident-filial,
+.pos-bento .pb-ident-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pos-bento .pb-ident-ico {
+  font-size: 9px;
+  line-height: 1;
+}
+.pos-bento .pb-ident-dot {
+  opacity: 0.6;
+}
+.pos-bento .pb-ident-logout {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 13px;
+  border: 1px solid var(--pb-border);
+  border-radius: 999px;
+  background: var(--pb-surface);
+  color: var(--pb-text-2, var(--pb-text));
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+.pos-bento .pb-ident-logout:hover {
+  border-color: oklch(0.62 0.2 25 / 0.6);
+  color: oklch(0.62 0.2 25);
+  background: oklch(0.62 0.2 25 / 0.08);
+}
+.pos-bento .pb-ident-logout-ico {
+  font-size: 12px;
+  line-height: 1;
 }
 .pos-bento .pb-apuracao-label {
   font-size: 9px;
@@ -234,6 +357,41 @@
 .pos-bento .pb-btn-ico {
   font-size: 12px;
   line-height: 1;
+}
+.pos-bento .pb-btn--icon {
+  padding: 5px 7px;
+  position: relative;
+  gap: 0;
+}
+.pos-bento .pb-btn--icon span {
+  font-size: 13px;
+  line-height: 1;
+}
+.pos-bento .pb-btn--icon::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%) translateY(-2px);
+  background: oklch(0.15 0.02 264 / 0.96);
+  color: oklch(0.92 0.01 264);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 6px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+  z-index: 9999;
+}
+.pos-bento .pb-btn--icon:hover::after,
+.pos-bento .pb-btn--icon:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 .pos-bento .pb-select {
   appearance: none;
@@ -10227,6 +10385,35 @@
   font-weight: 700;
   white-space: nowrap;
 }
+.pos-bento .pb-sidebar-help {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-left: auto;
+  border: 1px solid var(--pb-border);
+  border-radius: 999px;
+  background: var(--pb-surface);
+  color: var(--pb-text-2);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+.pos-bento .pb-sidebar-help:hover,
+.pos-bento .pb-sidebar-help:focus-visible {
+  border-color: oklch(0.62 0.18 277 / 0.5);
+  background: oklch(0.62 0.18 277 / 0.12);
+  color: var(--pb-text);
+  transform: translateY(-1px);
+}
 .pos-bento .pb-sidebar-stack.is-collapsed {
   display: none;
 }
@@ -10237,6 +10424,9 @@
   justify-content: center;
 }
 .pos-bento[data-sidebar-collapsed="true"] .pb-sidebar-toolbar-title {
+  display: none;
+}
+.pos-bento[data-sidebar-collapsed="true"] .pb-sidebar-help {
   display: none;
 }
 .pos-bento .pb-sidebar-stack {
@@ -10449,20 +10639,10 @@
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-}
-.pos-bento .pb-side-panel-posicao .pb-donut-date-input:hover {
-  background: var(--mock-surface2, #f8fafc);
-  border-radius: 4px;
-  padding: 2px 4px;
-  margin: -2px -4px;
+  cursor: default;
 }
 .pos-bento .pb-side-panel-posicao .pb-donut-date-input:focus {
   outline: none;
-  background: var(--mock-surface2, #f8fafc);
-  border-radius: 4px;
-  padding: 2px 4px;
-  margin: -2px -4px;
-  box-shadow: 0 0 0 2px oklch(0.62 0.18 277 / 0.25);
 }
 
 /* Atualizar — botão discreto (ícone) */

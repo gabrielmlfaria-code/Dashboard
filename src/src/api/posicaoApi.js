@@ -49,4 +49,23 @@ export const PosicaoApi = {
       { module: "posicao" },
     );
   },
+
+  getCategoriasHorasConfig({ idFilial } = {}) {
+    const filialId = Number(idFilial);
+    const params = Number.isFinite(filialId) && filialId > 0 ? { idFilial: filialId } : {};
+    return ApiService.call("/posicao/categorias-horas", params, { module: "posicao" });
+  },
+
+  salvarCategoriasHoras({ idFilial, eventos }) {
+    const filialId = Number(idFilial);
+    const body = {
+      eventos,
+      ...(Number.isFinite(filialId) && filialId > 0 ? { idFilial: filialId } : {}),
+    };
+    return ApiService.callPost(
+      "/posicao/categorias-horas/salvar",
+      body,
+      { module: "posicao" },
+    );
+  },
 };

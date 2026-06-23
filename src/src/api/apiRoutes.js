@@ -16,6 +16,10 @@ export const ApiRoutes = Object.freeze({
       excluir: (idDepartamento) => `/posicao/forca-prevista/excluir/${idDepartamento}`,
       limpar: "/posicao/forca-prevista/limpar",
     },
+    categoriasHoras: {
+      config: "/posicao/categorias-horas",
+      salvar: "/posicao/categorias-horas/salvar",
+    },
   },
   absenteismo: {
     resumo: "/absenteismo/resumo",

@@ -948,11 +948,6 @@ export function PosicaoBentoHeader({
     [histRows, histRadar, histPeriodLabel, bancoHorasStats],
   );
 
-  useEffect(() => {
-    const registros = loadSaudeRegistrosSync().map(normalizeSaudeRegistro);
-    const cal = buildSaudeCalendarioLembretes(registros);
-    processSaudeCalendarioLembretes(cal, { showToast: Toast.show });
-  }, []);
 
   const resolveNlDeptoFilter = useCallback(
     (value) => {
@@ -1484,13 +1479,13 @@ export function PosicaoBentoHeader({
   }, [histRows]);
 
   // ===== Configura?es =====
-  const [cfgTab, setCfgTab] = useState("importacoes");
+  const [cfgTab, setCfgTab] = useState("metas");
   const [absMeta, setAbsMeta] = useState(() => loadAbsenteismoMeta());
   const [cfgAbsMeta, setCfgAbsMeta] = useState(() => String(loadAbsenteismoMeta()));
 
   const openCfg = useCallback(
-    (tab = "importacoes") => {
-      const fallbackTab = canUseImportacoes ? "importacoes" : canEditMetas ? "metas" : "horas";
+    (tab = "metas") => {
+      const fallbackTab = canEditMetas ? "metas" : "horas";
       const allowed =
         (tab === "importacoes" && canUseImportacoes) ||
         (tab === "metas" && canEditMetas) ||
@@ -2415,9 +2410,9 @@ export function PosicaoBentoHeader({
           <button
             type="button"
             className="pb-btn"
-            onClick={() => openCfg("importacoes")}
+            onClick={() => openCfg("metas")}
             aria-label="Abrir Configurações"
-            title="Configurações — aba Importações (provisória até API), Metas e Categorias de horas"
+            title="Configurações — Metas e Categorias de horas"
           >
             <span className="pb-btn-ico" aria-hidden="true">
               ⚙

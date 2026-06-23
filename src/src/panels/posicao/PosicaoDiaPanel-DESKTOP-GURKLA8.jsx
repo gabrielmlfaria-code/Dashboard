@@ -3183,7 +3183,7 @@ export function PosicaoDiaPanel() {
                 API indisponível — importe a planilha ou escolha outra data.
               </div>
             )}
-            {(showEmptyPlanilha || loadingTimedOut) && (
+            {showEmptyPlanilha && (
               <div
                 style={{
                   padding: "20px 16px",
@@ -3193,18 +3193,10 @@ export function PosicaoDiaPanel() {
                   maxWidth: 520,
                 }}
               >
-                {loadingTimedOut ? (
-                  <>
-                    O carregamento dos dados demorou demais (armazenamento local ou planilha
-                    grande). Você pode <strong>importar a tabela</strong> de novo ou recarregar a
-                    página (F5). Feche outras abas deste app se estiverem abertas.
-                  </>
-                ) : (
-                  <>
-                    Nenhum dado para exibir nesta data. Importe a planilha de marcações ou uma CCT
-                    em PDF (convenção coletiva).
-                  </>
-                )}
+                <>
+                  Nenhum dado para exibir nesta data. Importe a planilha de marcações ou uma CCT
+                  em PDF (convenção coletiva).
+                </>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
                   <input
                     ref={emptyXlsxFileRef}

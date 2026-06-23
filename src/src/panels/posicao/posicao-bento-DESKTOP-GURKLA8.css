@@ -59,6 +59,11 @@
   box-sizing: border-box;
 }
 
+/* No top padding when bento fills the viewport panel */
+#cpPosicao .pos-bento {
+  padding-top: 0;
+}
+
 /* Light theme override (scoped, only when data-theme="light" on .pos-bento) */
 .pos-bento[data-theme="light"] {
   --pb-surface: oklch(0.98 0.005 264);
@@ -223,6 +228,36 @@
 .pos-bento .pb-btn-ico {
   font-size: 12px;
   line-height: 1;
+}
+.pos-bento .pb-btn--icon {
+  padding: 5px 7px;
+  position: relative;
+  gap: 0;
+}
+.pos-bento .pb-btn--icon span {
+  font-size: 13px;
+  line-height: 1;
+}
+.pos-bento .pb-btn--icon::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: oklch(0.15 0.02 264 / 0.96);
+  color: oklch(0.92 0.01 264);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 5px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 999;
+}
+.pos-bento .pb-btn--icon:hover::after {
+  opacity: 1;
 }
 .pos-bento .pb-select {
   appearance: none;

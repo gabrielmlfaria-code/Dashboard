@@ -33,11 +33,17 @@ export function normalizeAuthPayload(payload = {}) {
 
 export function normalizeUserInfo(payload = {}) {
   const data = payload && typeof payload === "object" ? payload : {};
+  const filial =
+    typeof data.filial === "string" && data.filial.trim() ? data.filial.trim()
+    : typeof data.filialNome === "string" && data.filialNome.trim() ? data.filialNome.trim()
+    : "";
   return {
     id: assertString(data.id, "id"),
     username: assertString(data.username, "username"),
     name: assertString(data.name, "name"),
     cliente: assertString(data.cliente, "cliente"),
+    // Campo opcional: só incluído quando o backend retorna a filial do usuário.
+    ...(filial ? { filial } : {}),
   };
 }
 

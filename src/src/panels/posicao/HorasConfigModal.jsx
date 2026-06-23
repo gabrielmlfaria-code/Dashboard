@@ -1,6 +1,15 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import "./HorasConfigModal.css";
 import { HorasColumnsEditor } from "./HorasColumnsEditor.jsx";
+import { Toast } from "../../core/toast.js";
+import {
+  fetchEventCategoriesFromApi,
+  saveEventCategoriesToApi,
+  readEventCategoriesCache,
+  normalizeIdFilial,
+  resolveActiveFilialId,
+  persistEventCategoriesCache,
+} from "../../api/eventoCategoriaHoraAdapters.js";
 
 function HcmSortableTh({ id, label, sortKey, sortDir, onSort, className, style, title }) {
   const active = sortKey === id;
@@ -171,23 +180,17 @@ const normalizeEventConfig = (ev) => ({
   debitoBH: Boolean(ev?.debitoBH),
 });
 
-export function loadEventCategories() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(LS_KEY) || "null");
-    if (!Array.isArray(saved)) return DEFAULT_EVENTS.map(normalizeEventConfig);
-    const normalizedSaved = saved.map(normalizeEventConfig);
-    const byKey = new Set(normalizedSaved.map((e) => _norm(e.name)));
-    const missingDefaults = DEFAULT_EVENTS.filter((e) => !byKey.has(_norm(e.name))).map(normalizeEventConfig);
-    return missingDefaults.length ? [...normalizedSaved, ...missingDefaults] : normalizedSaved;
-  } catch {
-    return DEFAULT_EVENTS.map(normalizeEventConfig);
-  }
+export function loadEventCategories(idFilial = resolveActiveFilialId()) {
+  const { eventos } = readEventCategoriesCache(normalizeIdFilial(idFilial));
+  if (!Array.isArray(eventos) || !eventos.length) return [];
+  return eventos.map(normalizeEventConfig);
 }
 
-function saveEventCategories(events) {
-  try {
-    localStorage.setItem(LS_KEY, JSON.stringify(events));
-  } catch {}
+function saveEventCategories(events, idFilial = resolveActiveFilialId()) {
+  persistEventCategoriesCache({
+    eventos: events,
+    idFilial: normalizeIdFilial(idFilial),
+  });
 }
 
 /** Substitui toda a lista de eventos pelos nomes importados (todos com categoria 'ignorar'). Retorna a quantidade. */
@@ -239,26 +242,8 @@ function _inferBhFlagsByName(name) {
  * Retorna { added, ignored } onde ignored = novos eventos sem categoria conhecida.
  */
 export function mergeNewEvents(rawNames) {
-  const existing = loadEventCategories();
-  const existingKeys = new Set(existing.map((e) => _norm(e.name)));
-  const added = [];
-  const ignoredNames = [];
-  const seen = new Set(existingKeys);
-  [...new Set(rawNames.map((n) => String(n).trim()).filter(Boolean))].forEach((name) => {
-    const key = _norm(name);
-    if (seen.has(key)) return;
-    seen.add(key);
-    const cat = _inferCatByName(name);
-    added.push({
-      id: `det_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      name,
-      category: cat,
-      ..._inferBhFlagsByName(name),
-    });
-    if (cat === "ignorar") ignoredNames.push(name);
-  });
-  if (added.length) saveEventCategories([...existing, ...added]);
-  return { added: added.length, ignored: ignoredNames.length, ignoredNames };
+  void rawNames;
+  return { added: 0, ignored: 0, ignoredNames: [] };
 }
 
 function buildEventsForSource(sourceNames) {
@@ -286,19 +271,67 @@ export function HorasConfigPanel({
   onClose,
   sourceEventNames = [],
   embedded = false,
+  idFilial,
 }) {
-  const [events, setEvents] = useState(() => buildEventsForSource(sourceEventNames));
-  const [categories, setCategories] = useState(() => loadHourCategories());
+  const resolvedIdFilial = useMemo(() => normalizeIdFilial(idFilial ?? resolveActiveFilialId()), [idFilial]);
+  const [events, setEvents] = useState([]);
+  const [categories, setCategories] = useState(() => DEFAULT_HOUR_CATEGORIES.map((c) => ({ ...c })));
   const [colsEditorOpen, setColsEditorOpen] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [editingId, setEditingId] = useState(null);
-  const [editingName, setEditingName] = useState("");
-  const [confirmReset, setConfirmReset] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const categoryValues = useMemo(() => new Set(categories.map((c) => c.value)), [categories]);
-  const hasSourceEvents = Array.isArray(sourceEventNames) && sourceEventNames.length > 0;
+
+  const applyLoadedConfig = useCallback((config) => {
+    const nextCategories =
+      Array.isArray(config?.colunas) && config.colunas.length
+        ? config.colunas.map((c) => {
+            const base = DEFAULT_HOUR_CATEGORIES.find((d) => d.value === c.value);
+            return base
+              ? { ...base, label: c.label, color: c.color }
+              : { ...c, builtin: Boolean(c.builtin) };
+          })
+        : DEFAULT_HOUR_CATEGORIES.map((c) => ({ ...c }));
+    const nextEvents = (Array.isArray(config?.eventos) ? config.eventos : []).map(normalizeEventConfig);
+    setCategories(nextCategories);
+    setEvents(nextEvents);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLoadError("");
+    fetchEventCategoriesFromApi({ idFilial: resolvedIdFilial || undefined })
+      .then((config) => {
+        if (!active) return;
+        applyLoadedConfig(config);
+      })
+      .catch((err) => {
+        if (!active) return;
+        const message =
+          (err instanceof Error && err.message) || "Falha ao carregar categorias de horas.";
+        setLoadError(message);
+        const cached = readEventCategoriesCache(resolvedIdFilial);
+        if (cached.eventos.length) {
+          applyLoadedConfig({
+            colunas: cached.colunas.length ? cached.colunas : DEFAULT_HOUR_CATEGORIES,
+            eventos: cached.eventos,
+          });
+        } else {
+          setEvents([]);
+          setCategories(DEFAULT_HOUR_CATEGORIES.map((c) => ({ ...c })));
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [applyLoadedConfig, resolvedIdFilial]);
 
   const toggleSort = useCallback((key) => {
     setSortDir((prevDir) => (sortKey === key ? (prevDir === "asc" ? "desc" : "asc") : "asc"));
@@ -361,42 +394,44 @@ export function HorasConfigPanel({
       }),
     );
 
-  const deleteEvent = (id) => setEvents((prev) => prev.filter((e) => e.id !== id));
-
-  const addEvent = () => {
-    const name = newName.trim();
-    if (!name) return;
-    setEvents((prev) => [
-      ...prev,
-      { id: `custom_${Date.now()}`, name, category: "ausentes", ..._inferBhFlagsByName(name) },
-    ]);
-    setNewName("");
+  const handleReload = async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const config = await fetchEventCategoriesFromApi({ idFilial: resolvedIdFilial || undefined });
+      applyLoadedConfig(config);
+      saveEventCategories(config.eventos, resolvedIdFilial);
+      Toast.show("Lista recarregada do cadastro do sistema.", "s");
+    } catch (err) {
+      const message =
+        (err instanceof Error && err.message) || "Falha ao recarregar categorias de horas.";
+      setLoadError(message);
+      Toast.show(message, "e");
+    } finally {
+      setLoading(false);
+    }
   };
-
-  const startEdit = (ev) => {
-    setEditingId(ev.id);
-    setEditingName(ev.name);
-  };
-  const commitEdit = () => {
-    const name = editingName.trim();
-    if (name) setEvents((prev) => prev.map((e) => (e.id === editingId ? { ...e, name } : e)));
-    setEditingId(null);
-  };
-
-  const handleSave = () => {
-    saveEventCategories(events);
-    saveHourCategories(categories);
-    onClose?.();
-  };
-  const handleReset = () => {
-    if (confirmReset) {
-      setEvents(DEFAULT_EVENTS.map(normalizeEventConfig));
-      setCategories(DEFAULT_HOUR_CATEGORIES.map((c) => ({ ...c })));
-      try {
-        localStorage.removeItem(LS_KEY_COLUMNS);
-      } catch {}
-      setConfirmReset(false);
-    } else setConfirmReset(true);
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const refreshed = await saveEventCategoriesToApi({
+        colunas: categories,
+        eventos: events,
+        idFilial: resolvedIdFilial || undefined,
+      });
+      applyLoadedConfig(refreshed);
+      saveEventCategories(refreshed.eventos, resolvedIdFilial);
+      saveHourCategories(categories);
+      Toast.show("Categorias de horas salvas.", "s");
+      onClose?.();
+    } catch (err) {
+      const message =
+        (err instanceof Error && err.message) || "Falha ao salvar categorias de horas.";
+      Toast.show(message, "e");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const catByValue = Object.fromEntries(categories.map((c) => [c.value, c]));
@@ -415,9 +450,11 @@ export function HorasConfigPanel({
           </p>
 
           <p className="hcm-source-note">
-            {hasSourceEvents
-              ? `${events.length.toLocaleString("pt-BR")} tipo(s) de evento na base · exibindo ${visibleEvents.length.toLocaleString("pt-BR")}`
-              : "Sem tabela atual com eventos detectados; exibindo lista salva/padrão."}
+            {loading
+              ? "Carregando eventos de EVENTO_CATEGORIA_HORA_PTO…"
+              : loadError
+                ? `Falha ao carregar da API: ${loadError}`
+                : `${events.length.toLocaleString("pt-BR")} evento(s) do sistema · exibindo ${visibleEvents.length.toLocaleString("pt-BR")}`}
           </p>
 
           <div className="hcm-table-shell">
@@ -520,39 +557,23 @@ export function HorasConfigPanel({
                 {visibleEvents.length === 0 ? (
                   <tr>
                     <td className="hcm-empty" colSpan={categories.length + BH_FLAGS.length + 2}>
-                      Nenhum evento encontrado para esta pesquisa.
+                      {loading
+                        ? "Carregando eventos…"
+                        : "Nenhum evento encontrado para esta pesquisa."}
                     </td>
                   </tr>
                 ) : (
                   visibleEvents.map((ev) => (
                     <tr key={ev.id} className={`hcm-cfg-row cat-${ev.category}`}>
                       <td className="hcm-td-name">
-                        {editingId === ev.id ? (
-                          <input
-                            className="hcm-name-input"
-                            value={editingName}
-                            autoFocus
-                            onChange={(e) => setEditingName(e.target.value)}
-                            onBlur={commitEdit}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") commitEdit();
-                              if (e.key === "Escape") setEditingId(null);
-                            }}
-                          />
-                        ) : (
+                        <span className="hcm-ev-name" title={ev.codigo ? `Código: ${ev.codigo}` : ev.name}>
                           <span
-                            className="hcm-ev-name"
-                            onDoubleClick={() => startEdit(ev)}
-                            title="Duplo clique para editar"
-                          >
-                            <span
-                              className="hcm-cat-dot"
-                              style={{ background: catByValue[ev.category]?.color }}
-                              aria-hidden="true"
-                            />
-                            {ev.name}
-                          </span>
-                        )}
+                            className="hcm-cat-dot"
+                            style={{ background: catByValue[ev.category]?.color }}
+                            aria-hidden="true"
+                          />
+                          {ev.name}
+                        </span>
                       </td>
                       {categories.map((c) => (
                         <td key={c.value} className="hcm-td-radio">
@@ -583,17 +604,7 @@ export function HorasConfigPanel({
                           </label>
                         </td>
                       ))}
-                      <td className="hcm-td-del">
-                        <button
-                          type="button"
-                          className="hcm-del-btn"
-                          onClick={() => deleteEvent(ev.id)}
-                          aria-label={`Remover ${ev.name}`}
-                          title="Remover"
-                        >
-                          ✕
-                        </button>
-                      </td>
+                      <td className="hcm-td-del" />
                     </tr>
                   ))
                 )}
@@ -602,48 +613,35 @@ export function HorasConfigPanel({
             </div>
           </div>
 
-          {/* Adicionar novo evento */}
-          <div className="hcm-add-row">
-            <input
-              type="text"
-              className="hcm-add-input"
-              placeholder="Nome do novo evento…"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") addEvent();
-              }}
-            />
-            <button
-              type="button"
-              className="pb-trend-tab hcm-add-btn"
-              onClick={addEvent}
-              disabled={!newName.trim()}
-            >
-              + Adicionar
-            </button>
+          {/* Eventos vêm exclusivamente de EVENTO_PTO / EVENTO_CATEGORIA_HORA_PTO */}
+          <div className="hcm-add-row hcm-add-row--disabled">
+            <span className="hcm-add-hint">
+              Eventos são carregados do cadastro do sistema (EVENTO_PTO). Novos eventos entram
+              automaticamente após sincronização.
+            </span>
           </div>
         </div>
 
         <div className="hcm-footer">
           <button
             type="button"
-            className={`pb-trend-tab hcm-reset-btn${confirmReset ? " is-confirm" : ""}`}
-            onClick={handleReset}
-            onBlur={() => setConfirmReset(false)}
+            className="pb-trend-tab hcm-reset-btn"
+            onClick={handleReload}
+            disabled={loading || saving}
           >
-            {confirmReset ? "Confirmar?" : "Restaurar padrão"}
+            Recarregar
           </button>
           <div style={{ flex: 1 }} />
-          <button type="button" className="pb-trend-tab" onClick={onClose}>
+          <button type="button" className="pb-trend-tab" onClick={onClose} disabled={saving}>
             Cancelar
           </button>
           <button
             type="button"
             className="pb-trend-tab is-active hcm-save-btn"
             onClick={handleSave}
+            disabled={loading || saving}
           >
-            Salvar
+            {saving ? "Salvando…" : "Salvar"}
           </button>
         </div>
     </>

@@ -20,7 +20,18 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ["pdfjs-dist", "tesseract.js"],
+    include: [
+      "pdfjs-dist",
+      "tesseract.js",
+      "apexcharts",
+      "react-apexcharts",
+      "jspdf",
+      "html2canvas",
+      "dompurify",
+      "recharts",
+      "@tanstack/react-router",
+      "@tanstack/react-query",
+    ],
   },
   server: {
     port: 8082,

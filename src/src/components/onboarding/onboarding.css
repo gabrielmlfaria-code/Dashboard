@@ -1,0 +1,551 @@
+/* ============================================================
+   Auto-treinamento "Posição do Dia" — estilo premium
+   Componentes são portados para <body>; cada raiz recebe
+   data-theme (light/dark) para herdar o tema do painel.
+   ============================================================ */
+
+.mp-ob {
+  --ob-bg: #ffffff;
+  --ob-bg-2: #f6f8fc;
+  --ob-border: #e3e8f0;
+  --ob-text: #0f172a;
+  --ob-text-2: #475569;
+  --ob-muted: #94a3b8;
+  --ob-accent: #5b5bf0;
+  --ob-accent-soft: #eef2ff;
+  --ob-accent-border: #c7d2fe;
+  --ob-good: #16a34a;
+  --ob-shadow: 0 24px 64px rgba(15, 23, 42, 0.22), 0 2px 8px rgba(15, 23, 42, 0.08);
+  --ob-radius: 16px;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  color: var(--ob-text);
+  box-sizing: border-box;
+}
+.mp-ob *,
+.mp-ob *::before,
+.mp-ob *::after {
+  box-sizing: border-box;
+}
+.mp-ob[data-theme="dark"] {
+  --ob-bg: #1c2231;
+  --ob-bg-2: #232b3d;
+  --ob-border: rgba(255, 255, 255, 0.1);
+  --ob-text: #eef2f9;
+  --ob-text-2: #b6c0d4;
+  --ob-muted: #7c879b;
+  --ob-accent: #8b8bff;
+  --ob-accent-soft: rgba(123, 123, 240, 0.16);
+  --ob-accent-border: rgba(139, 139, 255, 0.4);
+  --ob-shadow: 0 24px 64px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Spotlight do tour ────────────────────────────────────── */
+.mp-ob-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  pointer-events: none;
+}
+.mp-ob-spot {
+  position: fixed;
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 4px var(--ob-accent),
+    0 0 0 9999px rgba(8, 12, 24, 0.62);
+  transition:
+    top 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    left 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+.mp-ob[data-theme="dark"] .mp-ob-spot {
+  box-shadow:
+    0 0 0 4px var(--ob-accent),
+    0 0 0 9999px rgba(2, 4, 10, 0.74);
+}
+.mp-ob-click-block {
+  position: fixed;
+  inset: 0;
+  pointer-events: auto;
+}
+
+/* ── Tooltip (cartão de passo) ────────────────────────────── */
+.mp-ob-tip {
+  position: fixed;
+  z-index: 100001;
+  width: min(360px, calc(100vw - 32px));
+  background: var(--ob-bg);
+  border: 1px solid var(--ob-border);
+  border-radius: var(--ob-radius);
+  box-shadow: var(--ob-shadow);
+  padding: 18px 18px 14px;
+  pointer-events: auto;
+  animation: mp-ob-pop 0.22s ease;
+}
+@keyframes mp-ob-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.mp-ob-tip-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.mp-ob-step-count {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ob-accent);
+  background: var(--ob-accent-soft);
+  border: 1px solid var(--ob-accent-border);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.mp-ob-tip-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.25;
+  flex: 1;
+}
+.mp-ob-close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--ob-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 8px;
+}
+.mp-ob-close:hover {
+  background: var(--ob-bg-2);
+  color: var(--ob-text);
+}
+.mp-ob-tip-body {
+  margin: 0 0 10px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ob-text-2);
+}
+.mp-ob-why {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  background: var(--ob-accent-soft);
+  border: 1px solid var(--ob-accent-border);
+  border-radius: 10px;
+  padding: 9px 11px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ob-text);
+}
+.mp-ob-why-ico {
+  flex: 0 0 auto;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.mp-ob-why b {
+  font-weight: 700;
+}
+
+/* ── Rodapé do tooltip ────────────────────────────────────── */
+.mp-ob-tip-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.mp-ob-dots {
+  display: flex;
+  gap: 5px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+.mp-ob-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ob-border);
+  transition: all 0.2s ease;
+}
+.mp-ob-dot.is-active {
+  background: var(--ob-accent);
+  width: 16px;
+  border-radius: 999px;
+}
+.mp-ob-dot.is-done {
+  background: var(--ob-accent);
+  opacity: 0.5;
+}
+.mp-ob-btn {
+  appearance: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--ob-border);
+  background: var(--ob-bg);
+  color: var(--ob-text);
+  transition: all 0.15s ease;
+}
+.mp-ob-btn:hover {
+  background: var(--ob-bg-2);
+}
+.mp-ob-btn-primary {
+  border-color: transparent;
+  background: var(--ob-accent);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(91, 91, 240, 0.36);
+}
+.mp-ob-btn-primary:hover {
+  filter: brightness(1.05);
+  background: var(--ob-accent);
+}
+.mp-ob-btn-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ob-muted);
+  padding-left: 6px;
+  padding-right: 6px;
+}
+.mp-ob-btn-ghost:hover {
+  background: transparent;
+  color: var(--ob-text-2);
+}
+
+/* ── Launcher flutuante (FAB) ─────────────────────────────── */
+.mp-ob-fab {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 99990;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 16px 11px 13px;
+  border: none;
+  border-radius: 999px;
+  background: var(--ob-accent);
+  color: #fff;
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 10px 30px rgba(91, 91, 240, 0.42);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.mp-ob-fab:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 38px rgba(91, 91, 240, 0.5);
+}
+.mp-ob-fab-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 14px;
+  font-weight: 800;
+}
+.mp-ob-fab-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ob-accent);
+  font-size: 11px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Central de Ajuda (drawer lateral) ────────────────────── */
+.mp-ob-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 99995;
+  background: rgba(8, 12, 24, 0.42);
+  backdrop-filter: blur(2px);
+  animation: mp-ob-fade 0.2s ease;
+}
+@keyframes mp-ob-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.mp-ob-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 99996;
+  height: 100vh;
+  width: min(420px, 100vw);
+  background: var(--ob-bg);
+  border-left: 1px solid var(--ob-border);
+  box-shadow: var(--ob-shadow);
+  display: flex;
+  flex-direction: column;
+  animation: mp-ob-slide 0.26s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes mp-ob-slide {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+.mp-ob-drawer-head {
+  display: block;
+  position: static;
+  height: auto;
+  flex: 0 0 auto;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid var(--ob-border);
+  background: var(--ob-bg);
+}
+.mp-ob-drawer-head-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mp-ob-drawer-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  flex: 1;
+}
+.mp-ob-drawer-sub {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--ob-text-2);
+  line-height: 1.5;
+}
+.mp-ob-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 18px 28px;
+}
+.mp-ob-section-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ob-muted);
+  margin: 8px 0 10px;
+}
+.mp-ob-section + .mp-ob-section {
+  margin-top: 22px;
+}
+
+/* ── Card de início do tour (destaque) ────────────────────── */
+.mp-ob-hero-card {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--ob-accent), #7c5cf0);
+  color: #fff;
+  cursor: pointer;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  box-shadow: 0 10px 28px rgba(91, 91, 240, 0.36);
+}
+.mp-ob-hero-card:hover {
+  filter: brightness(1.04);
+}
+.mp-ob-hero-ico {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+.mp-ob-hero-txt strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 800;
+}
+.mp-ob-hero-txt span {
+  font-size: 12px;
+  opacity: 0.92;
+}
+
+/* ── Barra de progresso do checklist ──────────────────────── */
+.mp-ob-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.mp-ob-progress-track {
+  flex: 1;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--ob-bg-2);
+  overflow: hidden;
+  border: 1px solid var(--ob-border);
+}
+.mp-ob-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--ob-accent), #16a34a);
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.mp-ob-progress-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ob-text-2);
+  white-space: nowrap;
+}
+
+/* ── Itens do checklist ───────────────────────────────────── */
+.mp-ob-check {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mp-ob-check-item {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  padding: 11px 12px;
+  border: 1px solid var(--ob-border);
+  border-radius: 12px;
+  background: var(--ob-bg);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+  width: 100%;
+  font-family: inherit;
+}
+.mp-ob-check-item:hover {
+  border-color: var(--ob-accent-border);
+  background: var(--ob-bg-2);
+}
+.mp-ob-check-box {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 2px solid var(--ob-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #fff;
+  margin-top: 1px;
+  transition: all 0.18s ease;
+}
+.mp-ob-check-item.is-done .mp-ob-check-box {
+  background: var(--ob-good);
+  border-color: var(--ob-good);
+}
+.mp-ob-check-txt strong {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ob-text);
+}
+.mp-ob-check-item.is-done .mp-ob-check-txt strong {
+  text-decoration: line-through;
+  color: var(--ob-muted);
+}
+.mp-ob-check-txt span {
+  font-size: 12px;
+  color: var(--ob-text-2);
+  line-height: 1.45;
+}
+
+/* ── Glossário ────────────────────────────────────────────── */
+.mp-ob-search {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--ob-border);
+  background: var(--ob-bg-2);
+  color: var(--ob-text);
+  font-family: inherit;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+.mp-ob-search:focus {
+  outline: none;
+  border-color: var(--ob-accent);
+  box-shadow: 0 0 0 3px var(--ob-accent-soft);
+}
+.mp-ob-gloss {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mp-ob-gloss-item {
+  padding: 10px 12px;
+  border: 1px solid var(--ob-border);
+  border-radius: 10px;
+  background: var(--ob-bg);
+}
+.mp-ob-gloss-term {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ob-text);
+  margin-bottom: 2px;
+}
+.mp-ob-gloss-def {
+  font-size: 12.5px;
+  color: var(--ob-text-2);
+  line-height: 1.5;
+}
+.mp-ob-empty {
+  font-size: 12.5px;
+  color: var(--ob-muted);
+  text-align: center;
+  padding: 18px 0;
+}
+
+@media (max-width: 520px) {
+  .mp-ob-fab span.mp-ob-fab-label {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-ob-spot,
+  .mp-ob-tip,
+  .mp-ob-drawer,
+  .mp-ob-progress-fill {
+    transition: none;
+    animation: none;
+  }
+}

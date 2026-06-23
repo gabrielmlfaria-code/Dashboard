@@ -6,7 +6,9 @@ import {
   loadEventCategories,
   loadHourCategories,
 } from "./HorasConfigModal";
+import { fetchEventCategoriesFromApi } from "../../api/eventoCategoriaHoraAdapters.js";
 import { PbConfiguracoesModal } from "./PbConfiguracoesModal.jsx";
+import { UserIdentityBar } from "../../components/UserIdentityBar.jsx";
 import { Toast } from "../../core/toast.js";
 import { AbonosDeptPanel } from "./AbonosDeptPanel.jsx";
 import {
@@ -665,15 +667,6 @@ const fmtShortDate = (iso) => {
 const fmtDateInput = (iso) => {
   const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso || "");
-};
-const parseDateInput = (value) => {
-  const s = String(value || "").trim();
-  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-  m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/);
-  if (!m) return "";
-  const y = m[3].length === 2 ? `20${m[3]}` : m[3];
-  return `${y}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
 };
 const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
 
@@ -3860,7 +3853,6 @@ export function PosicaoBentoHeader({
   onRefresh,
   dataRefText = "",
   selectedDate = "",
-  onDateChange,
   totalText = "",
   filialOptions = [],
   deptoOptions = [],
@@ -3910,13 +3902,6 @@ export function PosicaoBentoHeader({
   useEffect(() => {
     setDateDraft(fmtDateInput(selectedDate || dataRefText));
   }, [selectedDate, dataRefText]);
-  const commitDateDraft = useCallback(
-    (value = dateDraft) => {
-      const parsed = parseDateInput(value);
-      if (parsed) onDateChange?.(parsed);
-    },
-    [dateDraft, onDateChange],
-  );
   const presP = pct(m.presentes, m.atual);
   const faltP = pct(m.faltas, m.atual);
   const atrP = pct(m.atrasos, m.atual);
@@ -4412,6 +4397,11 @@ export function PosicaoBentoHeader({
     () => collectHistEventNames(histRowsAll),
     [histRowsAll],
   );
+  useEffect(() => {
+    fetchEventCategoriesFromApi({ idFilial: filialValue || undefined }).catch(() => {
+      // Mantém cache local se a API estiver indisponível.
+    });
+  }, [filialValue]);
   const histRows = useMemo(
     () => filterHistRowsByPeriod(histRowsAll, { faltDays, histDateFrom, histDateTo, periodoApuracao }),
     [histRowsAll, faltDays, histDateFrom, histDateTo, periodoApuracao],
@@ -4593,8 +4583,10 @@ export function PosicaoBentoHeader({
     [onOpenMensalEventColaboradores],
   );
   const bancoHorasStats = useMemo(
-    () => dashboardApiData.bancoHorasStats || buildBancoHorasStats(histRows, loadEventCategories(), storedBancoHoras, activeDashboardPeriod),
-    [dashboardApiData.bancoHorasStats, histRows, cfgOpen, storedBancoHoras, activeDashboardPeriod],
+    () =>
+      dashboardApiData.bancoHorasStats ||
+      buildBancoHorasStats(histRows, loadEventCategories(filialValue), storedBancoHoras, activeDashboardPeriod),
+    [dashboardApiData.bancoHorasStats, histRows, cfgOpen, storedBancoHoras, activeDashboardPeriod, filialValue],
   );
   const abonosStoredEffective = dashboardApiData.abonosStored || storedAbonos;
   const mensalData = dashboardApiData.mensalData || storedMensal;
@@ -5112,11 +5104,6 @@ export function PosicaoBentoHeader({
     [histRows, histRadarForContext, histPeriodLabel, bancoHorasStats, abonosStoredEffective],
   );
 
-  useEffect(() => {
-    const registros = loadSaudeRegistrosSync().map(normalizeSaudeRegistro);
-    const cal = buildSaudeCalendarioLembretes(registros);
-    processSaudeCalendarioLembretes(cal, { showToast: Toast.show });
-  }, []);
 
   const resolveNlDeptoFilter = useCallback(
     (value) => {
@@ -5713,12 +5700,12 @@ export function PosicaoBentoHeader({
   }, [histRows]);
 
   // ===== Configura??es =====
-  const [cfgTab, setCfgTab] = useState("importacoes");
+  const [cfgTab, setCfgTab] = useState("metas");
   const [absMeta, setAbsMeta] = useState(() => loadAbsenteismoMeta());
   const [cfgAbsMeta, setCfgAbsMeta] = useState(() => String(loadAbsenteismoMeta()));
   const [cfgTurnoverMeta, setCfgTurnoverMeta] = useState(() => String(loadTurnoverMeta()));
 
-  const openCfg = useCallback((tab = "importacoes") => {
+  const openCfg = useCallback((tab = "metas") => {
     setCfgTab(tab);
     setCfgOpen(true);
   }, []);
@@ -6394,6 +6381,7 @@ export function PosicaoBentoHeader({
             }}
             horasTabProps={{
               sourceEventNames: currentTableEventNames,
+              idFilial: filialValue || undefined,
             }}
           />,
           document.body,
@@ -6649,9 +6637,8 @@ export function PosicaoBentoHeader({
           </div>
         </div>
 
-        <div className="pb-topbar-sep pb-topbar-sep--grow" aria-hidden="true" />
         <select
-          className="pb-btn"
+          className="pb-btn pb-topbar-filial"
           value={filialValue}
           onChange={(event) => onFilialChange?.(event.target.value)}
           aria-label="Filtrar por filial"
@@ -6666,56 +6653,53 @@ export function PosicaoBentoHeader({
         </select>
         <button
           type="button"
-          className="pb-btn pb-btn-theme"
+          className="pb-btn pb-btn--icon pb-btn-theme"
           style={{ marginLeft: 0 }}
           onClick={onToggleTheme}
           aria-label={theme === "dark" ? "Mudar para tema claro" : "Mudar para tema escuro"}
-          title={theme === "dark" ? "Tema claro" : "Tema escuro"}
+          data-tooltip={theme === "dark" ? "Tema claro" : "Tema escuro"}
         >
-          <span className="pb-btn-ico" aria-hidden="true">{theme === "dark" ? "☀" : "☾"}</span>
-          {theme === "dark" ? "Claro" : "Escuro"}
+          <span aria-hidden="true">{theme === "dark" ? "☀" : "☾"}</span>
         </button>
         <button
           type="button"
-          className="pb-btn"
+          className="pb-btn pb-btn--icon"
           onClick={() => setFpdOpen(true)}
           aria-label="Força Prevista por Departamento"
-          title="Força Prevista por Departamento"
+          data-tooltip="Força Prevista"
         >
-          <span className="pb-btn-ico" aria-hidden="true">◉</span>
-          Força Prevista
+          <span aria-hidden="true">◉</span>
         </button>
         <button
           type="button"
-          className="pb-btn"
+          className="pb-btn pb-btn--icon"
           onClick={() => setCalcOpen(true)}
           aria-label="Calculadora de Horas"
-          title="Calculadora de Horas"
+          data-tooltip="Calculadora"
         >
-          <span className="pb-btn-ico" aria-hidden="true">⏱</span>
-          Calculadora
+          <span aria-hidden="true">⏱</span>
         </button>
         <button
           type="button"
-          className="pb-btn"
-          onClick={() => openCfg("importacoes")}
-          aria-label="Abrir Configurações"
-          title="Configurações — aba Importações (provisória até API), Metas e Categorias de horas"
+          className="pb-btn pb-btn--icon"
+          onClick={() => openCfg("metas")}
+          aria-label="Configurações"
+          data-tooltip="Configurações"
         >
-          <span className="pb-btn-ico" aria-hidden="true">⚙</span>
-          Configurações
+          <span aria-hidden="true">⚙</span>
         </button>
         <button
           type="button"
-          className="pb-btn"
+          className="pb-btn pb-btn--icon"
           onClick={toggleFullscreen}
           aria-label={isFullscreen ? "Sair da tela cheia" : "Expandir dashboard (tela cheia)"}
-          title={isFullscreen ? "Restaurar" : "Expandir"}
+          data-tooltip={isFullscreen ? "Restaurar" : "Expandir"}
         >
-          <span className="pb-btn-ico" aria-hidden="true">
+          <span aria-hidden="true">
             {isFullscreen ? "⤡" : "⤢"}
           </span>
         </button>
+        <UserIdentityBar />
       </div>
 
       {nlAppliedFilter && (
@@ -6764,6 +6748,23 @@ export function PosicaoBentoHeader({
                 {sidebarCollapsed ? "›" : "‹"}
               </button>
               <span className="pb-sidebar-toolbar-title">Posição do dia agora</span>
+              <button
+                type="button"
+                className="pb-sidebar-help"
+                onClick={() => {
+                  if (typeof window !== "undefined") {
+                    window.dispatchEvent(
+                      new CustomEvent("posicao:open-card-help", {
+                        detail: { card: "posicao-dia-agora" },
+                      }),
+                    );
+                  }
+                }}
+                aria-label="Ajuda do card Posição do dia agora"
+                title="Tour guiado deste card"
+              >
+                ?
+              </button>
             </div>
             <div
               className={`pb-sidebar-stack${sidebarCollapsed ? " is-collapsed" : ""}`}
@@ -6789,24 +6790,10 @@ export function PosicaoBentoHeader({
                       type="text"
                       className="pb-donut-date-input"
                       value={dateDraft}
-                      onChange={(e) => {
-                        const v = e.target.value || "";
-                        setDateDraft(v);
-                        const parsed = parseDateInput(v);
-                        if (parsed) onDateChange?.(parsed);
-                      }}
-                      onFocus={(e) => e.currentTarget.select()}
-                      onClick={(e) => e.currentTarget.select()}
-                      onBlur={() => commitDateDraft()}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.currentTarget.blur();
-                          commitDateDraft(e.currentTarget.value);
-                        }
-                      }}
-                      title={dataRefText}
-                      aria-label="Data da posição"
-                      inputMode="numeric"
+                      readOnly
+                      tabIndex={-1}
+                      title="Data da posição carregada pela API"
+                      aria-label="Data da posição carregada pela API"
                       placeholder="dd/mm/aaaa"
                     />
                   ) : (
@@ -6903,7 +6890,7 @@ export function PosicaoBentoHeader({
               </div>
             </section>
 
-            <section className="pb-side-panel">
+            <section className="pb-side-panel pb-side-panel-quadro">
               <h2 className="pb-side-title">Quadro</h2>
               <table className="pb-side-table">
                 <thead>
@@ -6942,7 +6929,7 @@ export function PosicaoBentoHeader({
               </table>
             </section>
 
-            <section className="pb-side-panel">
+            <section className="pb-side-panel pb-side-panel-planejadas">
               <h2 className="pb-side-title">Planejadas</h2>
               <table className="pb-side-table">
                 <thead>
@@ -6985,6 +6972,7 @@ export function PosicaoBentoHeader({
             </section>
 
             <OperationalDiagnosisPanel
+              className="pb-side-panel-operacional"
               data={operationalDiagnosisData}
               onAction={handleOperationalAction}
             />
@@ -7084,7 +7072,7 @@ export function PosicaoBentoHeader({
               </div>
             </section>
 
-            <section className="pb-side-panel pb-side-panel-lei" aria-label="Lei de saúde preventiva">
+            <section className="pb-side-panel pb-side-panel-lei pb-side-panel-saude" aria-label="Lei de saúde preventiva">
               <button
                 type="button"
                 className="pb-side-law-card"
@@ -7098,7 +7086,7 @@ export function PosicaoBentoHeader({
               </button>
             </section>
 
-            <section className="pb-side-panel pb-side-panel-lei" aria-label="Conformidade NR-1">
+            <section className="pb-side-panel pb-side-panel-lei pb-side-panel-nr1" aria-label="Conformidade NR-1">
               <button
                 type="button"
                 className="pb-side-law-card pb-side-law-card--nr1"

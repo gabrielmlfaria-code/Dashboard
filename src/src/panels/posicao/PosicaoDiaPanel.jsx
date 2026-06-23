@@ -26,6 +26,8 @@ import {
   computeQuadroForcaPrevista,
 } from "../../api/forcaPrevistaAdapters.js";
 import { PosicaoBentoHeader } from "./PosicaoBentoHeader.jsx";
+import { PosicaoOnboarding } from "../../components/onboarding/PosicaoOnboarding.jsx";
+import { LoadingOverlay } from "../../components/LoadingOverlay.jsx";
 import { HistoricoDayModal } from "./HistoricoDayModal.jsx";
 import "./HistoricoDayModal.css";
 import DeptCtrlBar from "./DeptCtrlBar.jsx";
@@ -1425,7 +1427,7 @@ export function PosicaoDiaPanel() {
           ?.label?.replace(/^\s*\d+\s*-\s*/, "") ||
         "",
       deptoFilter: posListDeptoFilter,
-      eventCategories: loadEventCategories(),
+      eventCategories: loadEventCategories(posListFilialFilter || filialFilter),
       fpdNomeToId,
     });
   }, [
@@ -1440,6 +1442,7 @@ export function PosicaoDiaPanel() {
     posListDeptoFilter,
     posListOverrideEvents,
     filialOptions,
+    filialFilter,
   ]);
 
   const posListTitle = useMemo(() => {
@@ -2564,7 +2567,7 @@ export function PosicaoDiaPanel() {
       }
       const histRows = bancoHorasHistSource;
       const to = periodoApuracao?.ate || periodoApuracao?.de || ref;
-      const categories = loadEventCategories();
+      const categories = loadEventCategories(filialFilter);
       let events = filterEventsForPosListKey(
         flattenHistEvents(histRows, from, to),
         "banco_horas",
@@ -2573,7 +2576,7 @@ export function PosicaoDiaPanel() {
       if (kpi) events = filterBancoHorasEventsByKpi(events, kpi);
       return events;
     },
-    [bancoHorasHistSource, dia?.data_referencia, periodoApuracao, presentesDate],
+    [bancoHorasHistSource, dia?.data_referencia, periodoApuracao, presentesDate, filialFilter],
   );
 
   const openBancoHorasModalWithRows = useCallback(
@@ -3234,6 +3237,14 @@ export function PosicaoDiaPanel() {
       className="chart-panel chart-panel--viewport"
       id="cpPosicao"
     >
+      {showLoading && (
+        <LoadingOverlay
+          theme={theme}
+          title="Aguarde, processando…"
+          subtitle="Estamos carregando os dados da posição do dia. Isso pode levar alguns instantes."
+        />
+      )}
+
       <div className="panel-header" id="phPosicao" style={{ display: "none" }}>
         <div className="panel-dot" style={{ background: "var(--c4)" }}></div>
         <span className="panel-title">Posicao do Dia</span>
@@ -3372,7 +3383,7 @@ export function PosicaoDiaPanel() {
                 API indisponível — importe a planilha ou escolha outra data.
               </div>
             )}
-            {(showEmptyPlanilha || loadingTimedOut) && (
+            {showEmptyPlanilha && (
               <div
                 style={{
                   padding: "20px 16px",
@@ -3382,18 +3393,10 @@ export function PosicaoDiaPanel() {
                   maxWidth: 520,
                 }}
               >
-                {loadingTimedOut ? (
-                  <>
-                    O carregamento dos dados demorou demais (armazenamento local ou planilha
-                    grande). Você pode <strong>importar a tabela</strong> de novo ou recarregar a
-                    página (F5). Feche outras abas deste app se estiverem abertas.
-                  </>
-                ) : (
-                  <>
-                    Nenhum dado para exibir nesta data. Importe a planilha de marcações ou uma CCT em
-                    PDF (convenção coletiva).
-                  </>
-                )}
+                <>
+                  Nenhum dado para exibir nesta data. Importe a planilha de marcações ou uma CCT em
+                  PDF (convenção coletiva).
+                </>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
                   <input
                     ref={emptyXlsxFileRef}
@@ -3471,7 +3474,6 @@ export function PosicaoDiaPanel() {
                 lastUpdText={lastUpdText}
                 dataRefText={homeDateText}
                 selectedDate={presentesDate || dia?.data_referencia || ""}
-                onDateChange={setPresentesDate}
                 totalText={""}
                 fpdMap={fpdMap}
                 fpdList={fpdQuery.data ?? []}
@@ -3527,6 +3529,10 @@ export function PosicaoDiaPanel() {
                 periodoApuracao={periodoApuracao}
                 onPeriodoApuracaoChange={setPeriodoApuracaoOverride}
               />
+            )}
+
+            {!showLoading && dia && totals && showHome && (
+              <PosicaoOnboarding theme={theme} />
             )}
 
             {!showLoading && dia && totals && !showHome && (

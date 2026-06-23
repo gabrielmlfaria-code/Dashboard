@@ -7,13 +7,9 @@ import {
   redirect,
   useRouter,
   useRouterState,
-  HeadContent,
-  Scripts,
 } from "@tanstack/react-router";
 
 import { Auth } from "../core/auth.js";
-import appCss from "../styles.css?url";
-import legacyCss from "../styles-legacy.css?url";
 
 function NotFoundComponent() {
   return (
@@ -86,37 +82,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       throw redirect({ to: "/login", replace: true });
     }
   },
-  head: () => ({
-    meta: [
-      { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Dashboard Radar Trabalhista" },
-      { name: "description", content: "Dashboard Radar Trabalhista Macchips" },
-    ],
-    links: [
-      { rel: "stylesheet", href: appCss },
-      { rel: "stylesheet", href: legacyCss },
-    ],
-  }),
-  shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
   errorComponent: ErrorComponent,
 });
-
-function RootShell({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="pt-BR" translate="no">
-      <head>
-        <HeadContent />
-      </head>
-      <body>
-        {children}
-        <Scripts />
-      </body>
-    </html>
-  );
-}
 
 function LogoutButton({ userInfo }: { userInfo: ReturnType<typeof Auth.getUserInfo> }) {
   const userLabel = userInfo ? `${userInfo.name} | ${userInfo.cliente}` : "Sessao ativa";
@@ -219,7 +188,6 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <div id="toastRoot" className="toast-root" />
-      {authed && !onLogin ? <LogoutButton userInfo={userInfo} /> : null}
       {blocked ? (
         <div
           data-app-loading="1"

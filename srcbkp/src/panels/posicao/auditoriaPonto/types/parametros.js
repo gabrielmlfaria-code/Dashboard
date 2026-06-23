@@ -1,0 +1,16 @@
+export const PARAMETROS_AUDITORIA_KEYS = [
+  "toleranciaMinutos",
+  "toleranciaDuplicidadeMinutos",
+  "janelaPareamentoMaxMinutos",
+  "intervaloIntrajornadaMinutos",
+  "jornadaIntrajornadaMinutos",
+  "intervaloInterjornadaMinutos",
+  "pontoBritanicoDias",
+  "minutosResiduaisMinutos",
+  "limiteHoraExtraDiariaMinutos",
+  "intervaloIntrajornadaMaxMinutos",
+  "diasConsecutivosLimite",
+  "limiteBancoHorasPositivoMinutos",
+  "limiteBancoHorasNegativoMinutos",
+  "recorrenciaRiscoLimite",
+];
