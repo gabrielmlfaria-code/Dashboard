@@ -393,6 +393,46 @@
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+.pos-bento .pb-tooltip-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin-left: 5px;
+  font-size: 11px;
+  line-height: 1;
+  color: oklch(0.6 0.01 264);
+  cursor: default;
+  vertical-align: middle;
+}
+.pos-bento .pb-tooltip-hint::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  transform: translateY(2px);
+  background: oklch(0.15 0.02 264 / 0.96);
+  color: oklch(0.92 0.01 264);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: normal;
+  width: max-content;
+  max-width: 220px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+  z-index: 9999;
+  line-height: 1.4;
+}
+.pos-bento .pb-tooltip-hint:hover::after {
+  opacity: 1;
+  transform: translateY(0);
+}
 .pos-bento .pb-select {
   appearance: none;
   -webkit-appearance: none;

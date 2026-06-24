@@ -397,7 +397,7 @@ export function HistoricoTable({
 
   /* ── sort ── */
   const [sortCol, setSortCol] = useState("date");
-  const [sortDir, setSortDir] = useState("desc");
+  const [sortDir, setSortDir] = useState("asc");
   const [deptSortCol, setDeptSortCol] = useState("absenteismo");
   const [deptSortDir, setDeptSortDir] = useState("desc");
   const [cargoSortCol, setCargoSortCol] = useState("absenteismo");

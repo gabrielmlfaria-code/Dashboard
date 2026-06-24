@@ -7039,19 +7039,37 @@ export function PosicaoBentoHeader({
                 </thead>
                 <tbody>
                   <tr>
-                    <td>Força atual</td>
+                    <td>
+                      Força atual
+                      <span
+                        className="pb-tooltip-hint"
+                        data-tooltip="Soma de ativos por departamento conforme dados do dia. Inclui presentes, ausentes e em trânsito."
+                      >ⓘ</span>
+                    </td>
                     <td className="num c-blue">{fmt(m.quadroAtual ?? m.atual)}</td>
                   </tr>
                   {(m.quadroPrevista ?? m.prevista) != null &&
                     Number(m.quadroPrevista ?? m.prevista) > 0 && (
                     <tr>
-                      <td>Força prevista</td>
+                      <td>
+                        Força prevista
+                        <span
+                          className="pb-tooltip-hint"
+                          data-tooltip="Quadro ideal configurado na tela Força Prevista. Representa a meta de headcount de cada setor."
+                        >ⓘ</span>
+                      </td>
                       <td className="num">{fmt(m.quadroPrevista ?? m.prevista)}</td>
                     </tr>
                   )}
                   {(m.quadroVagas ?? m.vagas) != null && (
                     <tr>
-                      <td>Vagas</td>
+                      <td>
+                        Vagas
+                        <span
+                          className="pb-tooltip-hint"
+                          data-tooltip="Força prevista − força atual. Zero indica quadro completo."
+                        >ⓘ</span>
+                      </td>
                       <td className="num">
                         {Number(m.quadroVagas ?? m.vagas) === 0 ? (
                           <span className="c-green" title="Quadro completo">
